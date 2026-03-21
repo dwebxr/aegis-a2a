@@ -97,6 +97,7 @@ export async function setPreference(
     weight: Math.max(0, Math.min(1, weight)),
     updatedAt: Date.now(),
   });
+  await clearRankingCache();
 }
 
 export async function getPreferences(): Promise<Preference[]> {
@@ -107,6 +108,12 @@ export async function getPreferences(): Promise<Preference[]> {
 export async function removePreference(id: string): Promise<void> {
   const db = await getDB();
   await db.delete("preferences", id);
+  await clearRankingCache();
+}
+
+export async function clearRankingCache(): Promise<void> {
+  const db = await getDB();
+  await db.clear("rankings");
 }
 
 export async function cacheRanking(offerId: string, score: number): Promise<void> {

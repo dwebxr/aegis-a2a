@@ -30,6 +30,14 @@ vi.mock("@/lib/constants", async () => {
 
 const createdIds: string[] = [];
 
+const qualityVcl = {
+  originality: 8.5,
+  insight: 9.0,
+  credibility: 8.8,
+  composite: 8.8,
+  verdict: "quality" as const,
+};
+
 beforeEach(() => {
   mockVerify.mockClear();
   mockVerify.mockResolvedValue({ verified: true });
@@ -50,6 +58,7 @@ describe("Full agent-to-agent flow", () => {
           priceUsdc: 2.5,
           content: "BASE DEX volumes spiked 340% in last 4h. Key pairs: WETH/USDC on Aerodrome.",
           supportedChains: ["base", "solana"],
+          vclScores: qualityVcl,
         }),
         headers: { "Content-Type": "application/json" },
       })
@@ -116,6 +125,7 @@ describe("Full agent-to-agent flow", () => {
             description: `From agent ${name}`,
             priceUsdc: 1,
             content: `Content ${name}`,
+            vclScores: qualityVcl,
           }),
           headers: { "Content-Type": "application/json" },
         })
@@ -172,6 +182,7 @@ describe("Full agent-to-agent flow", () => {
           priceUsdc: 5,
           content: "Cross-chain intelligence data",
           supportedChains: ["base", "solana", "icp"],
+          vclScores: qualityVcl,
         }),
         headers: { "Content-Type": "application/json" },
       })

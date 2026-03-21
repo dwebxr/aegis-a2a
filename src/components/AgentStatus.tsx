@@ -8,7 +8,8 @@ const STATUS_INDICATOR: Record<string, string> = {
   idle: "bg-gray-500",
   loading: "bg-yellow-500 animate-pulse",
   ready: "bg-green-500",
-  fallback: "bg-yellow-500",
+  ollama: "bg-blue-500",
+  "keyword-only": "bg-orange-500",
   error: "bg-red-500",
 };
 
@@ -16,7 +17,8 @@ const STATUS_LABEL: Record<string, string> = {
   idle: "Initializing...",
   loading: "Loading model...",
   ready: "WebLLM Ready",
-  fallback: "Ollama Fallback",
+  ollama: "Ollama Connected",
+  "keyword-only": "Keyword Matching",
   error: "Unavailable",
 };
 
@@ -65,14 +67,14 @@ export function AgentStatus() {
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${STATUS_INDICATOR[llmStatus.status]}`} />
+          <div className={`w-2 h-2 rounded-full ${STATUS_INDICATOR[llmStatus.status] || "bg-gray-500"}`} />
           <span className="text-sm text-gray-300">
-            LLM: {STATUS_LABEL[llmStatus.status]}
+            LLM: {STATUS_LABEL[llmStatus.status] || llmStatus.status}
           </span>
         </div>
         {llmStatus.error && (
-          <span className="text-xs text-yellow-500" title={llmStatus.error}>
-            {llmStatus.status === "fallback" ? "WebGPU N/A" : "Error"}
+          <span className="text-xs text-gray-500" title={llmStatus.error}>
+            {llmStatus.error.length > 30 ? llmStatus.error.slice(0, 30) + "..." : llmStatus.error}
           </span>
         )}
       </div>

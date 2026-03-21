@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  reactStrictMode: false,
   webpack: (config, { isServer }) => {
     // Ignore the porto connector that wagmi tries to import
     config.resolve.fallback = {

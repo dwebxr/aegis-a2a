@@ -11,7 +11,7 @@ import { CHAIN_NAMES, CHAIN_ICONS } from "@/lib/constants";
 type FeedTab = "free" | "premium";
 
 export function A2AFeed() {
-  const [tab, setTab] = useState<FeedTab>("premium");
+  const [tab, setTab] = useState<FeedTab>("free");
   const [chainFilter, setChainFilter] = useState<ChainType | undefined>();
   const { offers, isLoading, error, refetch } = useOffers(chainFilter);
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
@@ -20,6 +20,7 @@ export function A2AFeed() {
     content: string;
   } | null>(null);
   const [rankedOffers, setRankedOffers] = useState<ScoredOffer[]>([]);
+  const [viewLoading, setViewLoading] = useState(false);
 
   useEffect(() => {
     if (offers.length === 0) {
@@ -44,6 +45,26 @@ export function A2AFeed() {
 
     return () => { cancelled = true; };
   }, [offers]);
+
+  const trackInteraction = async (offerId: string, action: "view" | "purchase" | "dismiss", tags: string[]) => {
+    const { recordInteraction } = await import("@/services/preference/db");
+    recordInteraction(offerId, action, tags);
+  };
+
+  const handleViewFree = async (offer: Offer) => {
+    setViewLoading(true);
+    trackInteraction(offer.id, "view", offer.topics || []);
+    try {
+      const res = await fetch(`/api/agent/free?offerId=${offer.id}`);
+      if (!res.ok) throw new Error("Failed to load content");
+      const data = await res.json();
+      setUnlockedContent({ title: offer.title, content: data.content });
+    } catch {
+      setUnlockedContent({ title: offer.title, content: "Failed to load content." });
+    } finally {
+      setViewLoading(false);
+    }
+  };
 
   const filteredOffers = useMemo(
     () => rankedOffers.filter((o) => tab === "free" ? o.priceUsdc === 0 : o.priceUsdc > 0),
@@ -110,7 +131,7 @@ export function A2AFeed() {
             </div>
           ) : (
             filteredOffers.map((offer) => (
-              <OfferCard key={offer.id} offer={offer} onBuy={setSelectedOffer} />
+              <OfferCard key={offer.id} offer={offer} onBuy={setSelectedOffer} onView={handleViewFree} />
             ))
           )}
         </div>
@@ -121,6 +142,7 @@ export function A2AFeed() {
           <MultiChainPayButton
             offer={selectedOffer}
             onUnlocked={(content) => {
+              trackInteraction(selectedOffer.id, "purchase", selectedOffer.topics || []);
               setUnlockedContent({ title: selectedOffer.title, content });
               setSelectedOffer(null);
             }}

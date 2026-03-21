@@ -62,7 +62,6 @@ describe("transformBriefingItem", () => {
     const r1 = transformBriefingItem(item, config, 1);
     const r2 = transformBriefingItem(item, config, 2);
 
-    // Same content should produce same external ID
     expect(r1!.sourceRef!.externalId).toBe(r2!.sourceRef!.externalId);
   });
 
@@ -73,31 +72,65 @@ describe("transformBriefingItem", () => {
     expect(r1!.sourceRef!.externalId).not.toBe(r2!.sourceRef!.externalId);
   });
 
-  it("maps composite >= 9.0 to premium price", () => {
+  it("sets priceUsdc to 0 for all bridge offers", () => {
     const config = makeConfig();
-    const item = makeItem({
+    const highScore = makeItem({
       scores: { originality: 9, insight: 9, credibility: 9, composite: 9.5 },
     });
-    const result = transformBriefingItem(item, config, 1);
-    expect(result!.priceUsdc).toBe(10); // premium
-  });
-
-  it("maps composite >= 7.0 to basic price", () => {
-    const config = makeConfig();
-    const item = makeItem({
+    const midScore = makeItem({
       scores: { originality: 7, insight: 7, credibility: 8, composite: 7.5 },
     });
-    const result = transformBriefingItem(item, config, 1);
-    expect(result!.priceUsdc).toBe(2); // basic
+    expect(transformBriefingItem(highScore, config, 1)!.priceUsdc).toBe(0);
+    expect(transformBriefingItem(midScore, config, 1)!.priceUsdc).toBe(0);
   });
 
-  it("maps composite < 7.0 to free price", () => {
-    const config = makeConfig({ minCompositeScore: 0 });
+  it("sets description to item.reason", () => {
+    const config = makeConfig();
+    const item = makeItem({ reason: "Unique cross-chain analysis" });
+    const result = transformBriefingItem(item, config, 1);
+    expect(result!.description).toBe("Unique cross-chain analysis");
+  });
+
+  it("stores VCL scores as structured vclScores field", () => {
+    const config = makeConfig();
+    const item = makeItem();
+    const result = transformBriefingItem(item, config, 1);
+
+    expect(result!.vclScores).toBeDefined();
+    expect(result!.vclScores!.originality).toBe(8.5);
+    expect(result!.vclScores!.insight).toBe(9.0);
+    expect(result!.vclScores!.credibility).toBe(8.0);
+    expect(result!.vclScores!.composite).toBe(8.5);
+    expect(result!.vclScores!.verdict).toBe("quality");
+    expect(result!.vclScores!.vSignal).toBe(7.5);
+    expect(result!.vclScores!.cContext).toBe(6.0);
+    expect(result!.vclScores!.lSlop).toBe(2.0);
+  });
+
+  it("omits optional VCL fields when not present in source", () => {
+    const config = makeConfig();
     const item = makeItem({
-      scores: { originality: 5, insight: 5, credibility: 5, composite: 5.0 },
+      scores: { originality: 8, insight: 8, credibility: 8, composite: 8.0 },
     });
     const result = transformBriefingItem(item, config, 1);
-    expect(result!.priceUsdc).toBe(0); // free
+    expect(result!.vclScores!.vSignal).toBeUndefined();
+    expect(result!.vclScores!.cContext).toBeUndefined();
+    expect(result!.vclScores!.lSlop).toBeUndefined();
+  });
+
+  it("stores topics as structured array", () => {
+    const config = makeConfig();
+    const item = makeItem({ topics: ["DeFi", "MEV"] });
+    const result = transformBriefingItem(item, config, 1);
+    expect(result!.topics).toEqual(["DeFi", "MEV"]);
+  });
+
+  it("stores sourceUrl and sourceName", () => {
+    const config = makeConfig();
+    const item = makeItem({ sourceUrl: "https://example.com/article", source: "rss" });
+    const result = transformBriefingItem(item, config, 1);
+    expect(result!.sourceUrl).toBe("https://example.com/article");
+    expect(result!.sourceName).toBe("rss");
   });
 
   it("returns null for slop verdict when qualityOnly is true", () => {
@@ -120,21 +153,18 @@ describe("transformBriefingItem", () => {
     expect(transformBriefingItem(item, config, 1)).toBeNull();
   });
 
-  it("includes V/C/L scores in description when present", () => {
+  it("extracts imageUrl from content with markdown image", () => {
     const config = makeConfig();
-    const item = makeItem();
+    const item = makeItem({ content: "# Title\n\n![photo](https://img.example.com/pic.jpg)\n\nBody text" });
     const result = transformBriefingItem(item, config, 1);
-    expect(result!.description).toContain("V-Signal: 7.5");
-    expect(result!.description).toContain("C-Context: 6.0");
-    expect(result!.description).toContain("L-Slop: 2.0");
+    expect(result!.imageUrl).toBe("https://img.example.com/pic.jpg");
   });
 
-  it("includes topics in description", () => {
+  it("sets imageUrl undefined when content has no images", () => {
     const config = makeConfig();
-    const item = makeItem({ topics: ["DeFi", "MEV"] });
+    const item = makeItem({ content: "Plain text with no images" });
     const result = transformBriefingItem(item, config, 1);
-    expect(result!.description).toContain("DeFi");
-    expect(result!.description).toContain("MEV");
+    expect(result!.imageUrl).toBeUndefined();
   });
 
   it("generates a content hash", () => {

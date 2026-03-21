@@ -2,6 +2,19 @@ import type { SourceRef } from "./bridge";
 
 export type ChainType = "base" | "solana" | "icp";
 
+export type VCLVerdict = "quality" | "slop";
+
+export interface VCLScores {
+  originality: number;
+  insight: number;
+  credibility: number;
+  composite: number;
+  vSignal?: number;
+  cContext?: number;
+  lSlop?: number;
+  verdict: VCLVerdict;
+}
+
 export interface Offer {
   id: string;
   agentId: string;
@@ -13,6 +26,11 @@ export interface Offer {
   createdAt: number;
   encryptedContent?: string;
   sourceRef?: SourceRef;
+  vclScores?: VCLScores;
+  topics?: string[];
+  sourceUrl?: string;
+  sourceName?: string;
+  imageUrl?: string;
 }
 
 export interface ScoredOffer extends Offer {

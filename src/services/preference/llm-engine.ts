@@ -1,6 +1,6 @@
 "use client";
 
-type EngineStatus = "idle" | "loading" | "ready" | "fallback" | "error";
+type EngineStatus = "idle" | "loading" | "ready" | "ollama" | "keyword-only" | "error";
 
 interface WebLLMEngine {
   chat: {
@@ -17,6 +17,7 @@ interface WebLLMEngine {
 let engine: WebLLMEngine | null = null;
 let engineStatus: EngineStatus = "idle";
 let engineError: string | null = null;
+let ollamaReachable = false;
 
 const WEBLLM_MODEL = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
 const OLLAMA_URL =
@@ -28,8 +29,15 @@ export function getEngineStatus() {
   return { status: engineStatus, error: engineError };
 }
 
+async function checkOllama(): Promise<boolean> {
+  const res = await fetch(`${OLLAMA_URL}/api/tags`, {
+    signal: AbortSignal.timeout(3_000),
+  });
+  return res.ok;
+}
+
 export async function initEngine(): Promise<boolean> {
-  if (engineStatus === "ready" || engineStatus === "fallback") return true;
+  if (engineStatus === "ready" || engineStatus === "ollama") return true;
   if (engineStatus === "loading") return false;
 
   engineStatus = "loading";
@@ -50,52 +58,69 @@ export async function initEngine(): Promise<boolean> {
 
     engineStatus = "ready";
     return true;
-  } catch (error) {
-    console.warn("[WebLLM] Unavailable, using Ollama fallback:", error);
-    engineStatus = "fallback";
-    engineError = error instanceof Error ? error.message : "WebLLM init failed";
+  } catch (webllmError) {
+    console.warn("[WebLLM] Unavailable, checking Ollama:", webllmError);
+
+    try {
+      ollamaReachable = await checkOllama();
+    } catch {
+      ollamaReachable = false;
+    }
+
+    if (ollamaReachable) {
+      engineStatus = "ollama";
+      engineError = "WebGPU N/A, using Ollama";
+      return true;
+    }
+
+    engineStatus = "keyword-only";
+    engineError = "No LLM available (WebGPU N/A, Ollama unreachable). Using keyword matching.";
     return false;
+  }
+}
+
+export class LLMUnavailableError extends Error {
+  constructor() {
+    super("No LLM backend available");
+    this.name = "LLMUnavailableError";
   }
 }
 
 export async function generateCompletion(prompt: string): Promise<string> {
   if (engine) {
-    try {
-      const result = await engine.chat.completions.create({
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.3,
-        max_tokens: 512,
-      });
-      return result.choices[0]?.message?.content || "";
-    } catch (error) {
-      console.warn("[WebLLM] Inference failed, trying Ollama:", error);
-    }
-  }
-
-  try {
-    const response = await fetch(`${OLLAMA_URL}/api/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "llama3.2:1b",
-        prompt,
-        stream: false,
-        options: { temperature: 0.3, num_predict: 512 },
-      }),
+    const result = await engine.chat.completions.create({
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.3,
+      max_tokens: 512,
     });
-
-    if (!response.ok) {
-      throw new Error(`Ollama returned ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.response || "";
-  } catch (error) {
-    console.warn("[Ollama] Fallback also failed:", error);
-    return "";
+    const content = result.choices[0]?.message?.content;
+    if (!content) throw new LLMUnavailableError();
+    return content;
   }
+
+  if (!ollamaReachable) throw new LLMUnavailableError();
+
+  const response = await fetch(`${OLLAMA_URL}/api/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "llama3.2:1b",
+      prompt,
+      stream: false,
+      options: { temperature: 0.3, num_predict: 512 },
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Ollama returned ${response.status}`);
+  }
+
+  const data = await response.json();
+  if (!data.response) throw new LLMUnavailableError();
+  return data.response;
 }
 
 export function isReady(): boolean {
-  return engineStatus === "ready" || engineStatus === "fallback";
+  return engineStatus === "ready" || engineStatus === "ollama";
 }

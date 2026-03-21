@@ -25,7 +25,7 @@ vi.mock("fs", () => {
   return { ...mock, default: mock };
 });
 
-const mockFetch = vi.fn();
+const mockFetch = vi.fn().mockRejectedValue(new Error("unmocked fetch"));
 vi.stubGlobal("fetch", mockFetch);
 
 beforeEach(async () => {
@@ -102,43 +102,50 @@ function mockBriefingFetch(briefing: D2ABriefingResponse) {
 // ==========================================================================
 
 describe("transform edge cases", () => {
-  it("exact boundary: composite === 7.0 maps to basic", () => {
-    const result = transformBriefingItem(
-      makeItem({ scores: { originality: 7, insight: 7, credibility: 7, composite: 7.0 } }),
-      makeConfig(), 1,
-    );
-    expect(result!.priceUsdc).toBe(2);
-  });
-
-  it("exact boundary: composite === 9.0 maps to premium", () => {
-    const result = transformBriefingItem(
+  it("all bridge offers are free regardless of composite score", () => {
+    const high = transformBriefingItem(
       makeItem({ scores: { originality: 9, insight: 9, credibility: 9, composite: 9.0 } }),
       makeConfig(), 1,
     );
-    expect(result!.priceUsdc).toBe(10);
-  });
-
-  it("exact boundary: composite === 6.99 maps to free (below basic)", () => {
-    const result = transformBriefingItem(
+    const mid = transformBriefingItem(
+      makeItem({ scores: { originality: 7, insight: 7, credibility: 7, composite: 7.0 } }),
+      makeConfig(), 1,
+    );
+    const low = transformBriefingItem(
       makeItem({ scores: { originality: 7, insight: 7, credibility: 7, composite: 6.99 } }),
       makeConfig({ minCompositeScore: 0 }), 1,
     );
-    expect(result!.priceUsdc).toBe(0);
+    expect(high!.priceUsdc).toBe(0);
+    expect(mid!.priceUsdc).toBe(0);
+    expect(low!.priceUsdc).toBe(0);
   });
 
-  it("empty topics array produces description without Topics line", () => {
-    const result = transformBriefingItem(makeItem({ topics: [] }), makeConfig(), 1);
-    expect(result!.description).not.toContain("Topics:");
+  it("description is item.reason, topics stored as structured field", () => {
+    const result = transformBriefingItem(makeItem({ topics: ["DeFi"], reason: "Good analysis" }), makeConfig(), 1);
+    expect(result!.description).toBe("Good analysis");
+    expect(result!.topics).toEqual(["DeFi"]);
   });
 
-  it("description omits V/C/L when scores are absent", () => {
+  it("VCL scores stored as structured vclScores field", () => {
+    const result = transformBriefingItem(
+      makeItem({ scores: { originality: 8, insight: 8, credibility: 8, composite: 8.0, vSignal: 7.5, cContext: 6.0, lSlop: 2.0 } }),
+      makeConfig(), 1,
+    );
+    expect(result!.vclScores).toBeDefined();
+    expect(result!.vclScores!.composite).toBe(8.0);
+    expect(result!.vclScores!.vSignal).toBe(7.5);
+    expect(result!.vclScores!.cContext).toBe(6.0);
+    expect(result!.vclScores!.lSlop).toBe(2.0);
+  });
+
+  it("vclScores omits optional fields when absent in source", () => {
     const result = transformBriefingItem(
       makeItem({ scores: { originality: 8, insight: 8, credibility: 8, composite: 8.0 } }),
       makeConfig(), 1,
     );
-    expect(result!.description).not.toContain("V-Signal");
-    expect(result!.description).not.toContain("C-Context");
-    expect(result!.description).not.toContain("L-Slop");
+    expect(result!.vclScores!.vSignal).toBeUndefined();
+    expect(result!.vclScores!.cContext).toBeUndefined();
+    expect(result!.vclScores!.lSlop).toBeUndefined();
   });
 
   it("empty content string produces valid content hash", () => {
@@ -279,7 +286,10 @@ describe("sync /changes optimization", () => {
     const { syncFromAegis } = await import("@/services/bridge/sync");
     const result = await syncFromAegis(makeConfig());
 
-    expect(mockFetch).toHaveBeenCalledTimes(2);
+    // 2 core calls (/changes + briefing) + OGP fetches for each offer
+    const coreUrls = mockFetch.mock.calls.map((c: any[]) => c[0] as string);
+    expect(coreUrls.some((u: string) => u.includes("/changes"))).toBe(true);
+    expect(coreUrls.some((u: string) => u.includes("/briefing"))).toBe(true);
     expect(result.created).toBe(1);
   });
 
@@ -325,10 +335,9 @@ describe("sync x402 preview fallback", () => {
     const result = await syncFromAegis(makeConfig());
 
     expect(result.created).toBe(1);
-    // First call was the normal briefing fetch, second was preview retry
-    expect(mockFetch).toHaveBeenCalledTimes(2);
-    const secondUrl = mockFetch.mock.calls[1][0] as string;
-    expect(secondUrl).toContain("preview=true");
+    // First call was the normal briefing fetch, second was preview retry, then OGP fetches
+    const urls = mockFetch.mock.calls.map((c: any[]) => c[0] as string);
+    expect(urls.some((u: string) => u.includes("preview=true"))).toBe(true);
   });
 });
 
@@ -571,7 +580,7 @@ describe("full bridge flow: sync → offers available via API", () => {
     expect(bridgedOffer.agentId).toBe("aegis-hontal");
     expect(bridgedOffer.sourceRef).toBeDefined();
     expect(bridgedOffer.sourceRef!.system).toBe("aegis-hontal");
-    expect(bridgedOffer.priceUsdc).toBe(2); // basic tier (composite 8.5)
+    expect(bridgedOffer.priceUsdc).toBe(0); // all bridge offers are free
     expect(bridgedOffer.encryptedContent).toBeDefined();
     expect(bridgedOffer.contentHash).toMatch(/^[0-9a-f]{64}$/);
 
@@ -604,7 +613,7 @@ describe("full bridge flow: sync → offers available via API", () => {
     const second = listOffers({ sourceSystem: "aegis-hontal" });
     expect(second).toHaveLength(1);
     expect(second[0].id).toBe(firstId); // same offer, updated in place
-    expect(second[0].priceUsdc).toBe(10); // upgraded to premium
+    expect(second[0].priceUsdc).toBe(0); // all bridge offers are free
   });
 
   it("concurrent syncs do not duplicate offers", async () => {
@@ -776,40 +785,42 @@ describe("sync principal behavior", () => {
 // ==========================================================================
 
 describe("composite score clamping", () => {
-  it("composite 62.47 clamps to 10 → maps to premium", () => {
+  it("composite 62.47 still produces free offer with correct vclScores", () => {
     const result = transformBriefingItem(
       makeItem({ scores: { originality: 8, insight: 9, credibility: 9, composite: 62.47 } }),
       makeConfig(),
       1,
     );
-    expect(result!.priceUsdc).toBe(10);
+    expect(result!.priceUsdc).toBe(0);
+    expect(result!.vclScores!.composite).toBe(62.47);
   });
 
-  it("composite 15.0 clamps to 10 → maps to premium", () => {
+  it("composite 15.0 still produces free offer", () => {
     const result = transformBriefingItem(
       makeItem({ scores: { originality: 8, insight: 8, credibility: 8, composite: 15.0 } }),
       makeConfig(),
       1,
     );
-    expect(result!.priceUsdc).toBe(10);
+    expect(result!.priceUsdc).toBe(0);
   });
 
-  it("composite 10.0 exactly → maps to premium (clamped to 10, >= 9)", () => {
+  it("composite 10.0 exactly produces free offer", () => {
     const result = transformBriefingItem(
       makeItem({ scores: { originality: 10, insight: 10, credibility: 10, composite: 10.0 } }),
       makeConfig(),
       1,
     );
-    expect(result!.priceUsdc).toBe(10);
+    expect(result!.priceUsdc).toBe(0);
   });
 
-  it("composite 8.5 not clamped → maps to basic", () => {
+  it("composite 8.5 produces free offer with vclScores", () => {
     const result = transformBriefingItem(
       makeItem({ scores: { originality: 8, insight: 8, credibility: 8, composite: 8.5 } }),
       makeConfig(),
       1,
     );
-    expect(result!.priceUsdc).toBe(2);
+    expect(result!.priceUsdc).toBe(0);
+    expect(result!.vclScores!.composite).toBe(8.5);
   });
 
   it("items with composite > 10 still pass minCompositeScore filter", () => {

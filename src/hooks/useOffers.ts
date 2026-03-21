@@ -1,54 +1,48 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { Offer, ChainType } from "@/types/offer";
 
 export function useOffers(chain?: ChainType) {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  const fetchOffers = useCallback(async () => {
-    // Abort any in-flight request
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+  const refetch = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-    setIsLoading(true);
-    setError(null);
+  useEffect(() => {
+    let cancelled = false;
 
-    try {
+    async function doFetch() {
+      setIsLoading(true);
+      setError(null);
+
       const params = new URLSearchParams();
       if (chain) params.set("chain", chain);
 
-      const res = await fetch(`/api/agent/offers?${params.toString()}`, {
-        signal: controller.signal,
-      });
-      if (!res.ok) throw new Error(`Failed to fetch offers: ${res.status}`);
+      const res = await fetch(`/api/agent/offers?${params.toString()}`);
+      if (cancelled) return;
+
+      if (!res.ok) {
+        setError(`Failed to fetch offers: ${res.status}`);
+        setIsLoading(false);
+        return;
+      }
 
       const data = await res.json();
-      if (!controller.signal.aborted) {
-        setOffers(data.offers || []);
-      }
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      if (!controller.signal.aborted) {
-        setError(err instanceof Error ? err.message : "Failed to load offers");
-      }
-    } finally {
-      if (!controller.signal.aborted) {
-        setIsLoading(false);
-      }
+      if (cancelled) return;
+
+      setOffers(data.offers || []);
+      setIsLoading(false);
     }
-  }, [chain]);
 
-  useEffect(() => {
-    fetchOffers();
+    doFetch();
+
     return () => {
-      abortRef.current?.abort();
+      cancelled = true;
     };
-  }, [fetchOffers]);
+  }, [chain, refreshKey]);
 
-  return { offers, isLoading, error, refetch: fetchOffers };
+  return { offers, isLoading, error, refetch };
 }

@@ -86,6 +86,14 @@ function req(url: string, body: object) {
   });
 }
 
+const qualityVcl = {
+  originality: 8.5,
+  insight: 9.0,
+  credibility: 8.8,
+  composite: 8.8,
+  verdict: "quality" as const,
+};
+
 beforeEach(() => {
   _resetForTesting();
   mockReceipt = null;
@@ -101,6 +109,7 @@ describe("Real verification integration flow", () => {
       priceUsdc: 5,
       content: "This content was verified through real EVM log parsing",
       supportedChains: ["base"],
+      vclScores: qualityVcl,
     }));
     expect(pubRes.status).toBe(201);
     const { offerId } = await pubRes.json();
@@ -129,6 +138,7 @@ describe("Real verification integration flow", () => {
       priceUsdc: 10,
       content: "should not be revealed",
       supportedChains: ["base"],
+      vclScores: qualityVcl,
     }));
     const { offerId } = await pubRes.json();
 
@@ -154,6 +164,7 @@ describe("Real verification integration flow", () => {
       priceUsdc: 1,
       content: "secret",
       supportedChains: ["base"],
+      vclScores: qualityVcl,
     }));
     const { offerId } = await pubRes.json();
 
@@ -200,6 +211,7 @@ describe("Real verification integration flow", () => {
       priceUsdc: 1,
       content: "secret",
       supportedChains: ["base"],
+      vclScores: qualityVcl,
     }));
     const { offerId } = await pubRes.json();
 
@@ -224,6 +236,7 @@ describe("Real verification integration flow", () => {
       priceUsdc: 1,
       content: "secret",
       supportedChains: ["base"],
+      vclScores: qualityVcl,
     }));
     const { offerId } = await pubRes.json();
 
@@ -248,6 +261,7 @@ describe("Real verification integration flow", () => {
       priceUsdc: 1,
       content: "secret",
       supportedChains: ["base"],
+      vclScores: qualityVcl,
     }));
     const { offerId } = await pubRes.json();
 

@@ -1,5 +1,5 @@
 import type { D2ABriefingItem, SourceRef, BridgeConfig } from "@/types/bridge";
-import type { Offer } from "@/types/offer";
+import type { Offer, VCLScores } from "@/types/offer";
 import { createHash } from "crypto";
 
 /** Matches Aegis本体's itemHash() — null byte separator between title and sourceUrl */
@@ -7,35 +7,17 @@ function deriveExternalId(item: D2ABriefingItem): string {
   return createHash("sha256").update(`${item.title}\0${item.sourceUrl}`).digest("hex");
 }
 
-/** Aegis composite is nominally 0-10 but can exceed 10 in some scoring engines. Clamp first. */
-function scoreToPriceTier(composite: number): string {
-  const clamped = Math.min(composite, 10);
-  if (clamped >= 9.0) return "premium";
-  if (clamped >= 7.0) return "basic";
-  return "free";
-}
+function extractImageUrl(content: string): string | undefined {
+  const imgMatch = content.match(/!\[[^\]]*\]\(([^)]+)\)/);
+  if (imgMatch) return imgMatch[1];
 
-function buildDescription(item: D2ABriefingItem): string {
-  const { scores } = item;
-  const parts: string[] = [item.reason];
+  const htmlMatch = content.match(/<img[^>]+src=["']([^"']+)["']/);
+  if (htmlMatch) return htmlMatch[1];
 
-  if (item.topics.length > 0) {
-    parts.push(`Topics: ${item.topics.join(", ")}`);
-  }
+  const ogMatch = content.match(/https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|gif|webp)(?:\?[^\s"'<>]*)?/i);
+  if (ogMatch) return ogMatch[0];
 
-  const details = [
-    `Composite: ${scores.composite.toFixed(1)}`,
-    `Originality: ${scores.originality.toFixed(1)}`,
-    `Insight: ${scores.insight.toFixed(1)}`,
-    `Credibility: ${scores.credibility.toFixed(1)}`,
-  ];
-  if (scores.vSignal !== undefined) details.push(`V-Signal: ${scores.vSignal.toFixed(1)}`);
-  if (scores.cContext !== undefined) details.push(`C-Context: ${scores.cContext.toFixed(1)}`);
-  if (scores.lSlop !== undefined) details.push(`L-Slop: ${scores.lSlop.toFixed(1)}`);
-  parts.push(`[${details.join(" | ")}]`);
-
-  parts.push(`Source: ${item.source} (${item.sourceUrl})`);
-  return parts.join(" | ");
+  return undefined;
 }
 
 export function transformBriefingItem(
@@ -49,15 +31,31 @@ export function transformBriefingItem(
   const externalId = deriveExternalId(item);
   const sourceRef: SourceRef = { system: "aegis-hontal", externalId, version, syncedAt: Date.now() };
 
+  const vclScores: VCLScores = {
+    originality: item.scores.originality,
+    insight: item.scores.insight,
+    credibility: item.scores.credibility,
+    composite: item.scores.composite,
+    verdict: item.verdict,
+    ...(item.scores.vSignal !== undefined && { vSignal: item.scores.vSignal }),
+    ...(item.scores.cContext !== undefined && { cContext: item.scores.cContext }),
+    ...(item.scores.lSlop !== undefined && { lSlop: item.scores.lSlop }),
+  };
+
   return {
     agentId: config.agentId,
     title: item.title,
-    description: buildDescription(item),
-    priceUsdc: config.priceTierMap[scoreToPriceTier(item.scores.composite)] ?? 0,
+    description: item.reason,
+    priceUsdc: 0,
     contentHash: createHash("sha256").update(item.content).digest("hex"),
     supportedChains: [...config.defaultChains],
     encryptedContent: item.content,
     sourceRef,
+    vclScores,
+    topics: item.topics,
+    sourceUrl: item.sourceUrl,
+    sourceName: item.source,
+    imageUrl: extractImageUrl(item.content),
   };
 }
 

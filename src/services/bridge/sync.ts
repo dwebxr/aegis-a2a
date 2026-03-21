@@ -8,6 +8,7 @@ import type {
 import type { Offer } from "@/types/offer";
 import { addOffer, updateOffer, removeOffer, listOffersBySource } from "@/services/content/store";
 import { transformBriefingItems } from "./transform";
+import { fetchOgImage } from "@/lib/ogp";
 import { log } from "@/lib/logger";
 import fs from "fs";
 import path from "path";
@@ -178,20 +179,46 @@ export async function syncFromAegis(config: BridgeConfig): Promise<SyncResult> {
     }
   }
 
+  // Fetch OGP images concurrently for offers that need them
+  const ogpPromises = new Map<string, Promise<string | undefined>>();
+  for (const [externalId, offerData] of Array.from(incomingOffers.entries())) {
+    if (!offerData.imageUrl && offerData.sourceUrl) {
+      ogpPromises.set(
+        externalId,
+        fetchOgImage(offerData.sourceUrl).catch(() => undefined),
+      );
+    }
+  }
+
+  // Wait for all OGP fetches (with individual error handling above)
+  const ogpResults = new Map<string, string | undefined>();
+  for (const [externalId, promise] of Array.from(ogpPromises.entries())) {
+    ogpResults.set(externalId, await promise);
+  }
+
   for (const [externalId, offerData] of Array.from(incomingOffers.entries())) {
     const existing = existingByExternalId.get(externalId);
 
+    // Apply OGP image if content didn't have one
+    const imageUrl = offerData.imageUrl || ogpResults.get(externalId);
+    const offerWithImage = imageUrl ? { ...offerData, imageUrl } : offerData;
+
     if (!existing) {
-      addOffer(offerData);
+      addOffer(offerWithImage);
       result.created++;
     } else if (existing.sourceRef && existing.sourceRef.version < version) {
       updateOffer(existing.id, {
-        title: offerData.title,
-        description: offerData.description,
-        priceUsdc: offerData.priceUsdc,
-        contentHash: offerData.contentHash,
-        encryptedContent: offerData.encryptedContent,
-        sourceRef: offerData.sourceRef,
+        title: offerWithImage.title,
+        description: offerWithImage.description,
+        priceUsdc: offerWithImage.priceUsdc,
+        contentHash: offerWithImage.contentHash,
+        encryptedContent: offerWithImage.encryptedContent,
+        sourceRef: offerWithImage.sourceRef,
+        vclScores: offerWithImage.vclScores,
+        topics: offerWithImage.topics,
+        sourceUrl: offerWithImage.sourceUrl,
+        sourceName: offerWithImage.sourceName,
+        imageUrl: offerWithImage.imageUrl,
       });
       result.updated++;
     } else {

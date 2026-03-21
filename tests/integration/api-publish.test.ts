@@ -26,12 +26,21 @@ beforeEach(() => {
 });
 
 describe("POST /api/agent/publish", () => {
+  const validVclScores = {
+    originality: 8.5,
+    insight: 9.0,
+    credibility: 8.8,
+    composite: 8.8,
+    verdict: "quality" as const,
+  };
+
   const validBody = {
     agentId: "agent-1",
     title: "Market Analysis",
     description: "Deep dive into DeFi trends",
     priceUsdc: 5,
     content: "This is the premium content",
+    vclScores: validVclScores,
   };
 
   it("creates an offer and returns 201 with offerId", async () => {
