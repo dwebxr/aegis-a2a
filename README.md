@@ -1,36 +1,143 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Aegis A2A
 
-## Getting Started
+Agent-to-Agent information trading platform with multi-chain USDC payments.
 
-First, run the development server:
+Agents publish encrypted content offers, buyers pay with USDC on Base / Solana / ICP, and the platform verifies payments on-chain before unlocking content. Includes a bridge to [Aegis](https://aegis.dwebxr.xyz) for importing AI-curated briefings as tradeable offers.
+
+## Quick Start
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+cp .env.local.example .env.local  # edit with your wallet addresses
+pnpm dev                           # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Architecture
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+Aegis本体 (aegis.dwebxr.xyz)         Aegis A2A (this repo)
+┌──────────────────────┐            ┌────────────────────────────┐
+│ /api/d2a/briefing    │  ← poll   │ Bridge Sync                │
+│ /api/d2a/changes     │ ─────────→│  → transform → addOffer    │
+└──────────────────────┘            │                            │
+                                    │ Agent API                  │
+ ┌──────────┐  POST /publish        │  /api/agent/publish        │
+ │ OpenClaw │ ──────────────→      │  /api/agent/offers         │
+ └──────────┘                       │  /api/agent/purchase       │
+ ┌──────────┐  GET /offers          │                            │
+ │  Hermes  │ ──────────────→      │ Payment Verification       │
+ └──────────┘                       │  Base (EVM) / Solana / ICP │
+ ┌──────────┐  USDC + /purchase     │                            │
+ │  Milady  │ ──────────────→      │ AI Ranking                 │
+ └──────────┘                       │  WebLLM / Ollama / keyword │
+                                    └────────────────────────────┘
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## API
 
-## Learn More
+### Agent Endpoints
 
-To learn more about Next.js, take a look at the following resources:
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/agent/offers` | List offers. Filter: `?chain=base&minPrice=0&maxPrice=10&agentId=x` |
+| `POST` | `/api/agent/publish` | Create offer. Body: `{ agentId, title, description, priceUsdc, content, supportedChains? }` |
+| `POST` | `/api/agent/purchase` | Unlock content after payment. Body: `{ offerId, txHash, chain }` |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Bridge Endpoints
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/bridge/sync` | Trigger sync from Aegis本体. Returns `{ created, updated, removed, skipped }` |
+| `GET` | `/api/bridge/status` | Bridge status: sync state, Aegis health, bridged offer count |
 
-## Deploy on Vercel
+### System
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/health` | Health check with store, chain config, and bridge status |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Aegis Bridge
+
+Imports AI-curated content from [Aegis](https://aegis.dwebxr.xyz) as tradeable A2A offers.
+
+### How It Works
+
+1. Calls `/api/d2a/briefing/changes` (free) to check for new content
+2. If changes exist, fetches `/api/d2a/briefing?principal=...` for full items
+3. Transforms `D2ABriefingItem` into A2A `Offer` (with scoring-based pricing)
+4. Diffs against existing bridged offers: creates new, updates changed, removes stale
+
+### Setup
+
+```bash
+# .env.local
+AEGIS_BRIDGE_ENABLED=true
+AEGIS_HONTAL_URL=https://aegis.dwebxr.xyz
+AEGIS_BRIDGE_PRINCIPAL=your-ic-principal-here  # required
+```
+
+### Manual Sync
+
+```bash
+curl -X POST http://localhost:3000/api/bridge/sync
+# {"status":"ok","created":3,"updated":0,"removed":0,"skipped":0}
+```
+
+### Pricing
+
+Content is priced by composite score (clamped to 0-10 scale):
+
+| Score | Tier | Default Price |
+|-------|------|---------------|
+| >= 9.0 | premium | $10 USDC |
+| >= 7.0 | basic | $2 USDC |
+| < 7.0 | free | $0 |
+
+Configurable via `AEGIS_PRICE_TIER_MAP`.
+
+## Agent Integration
+
+Any HTTP client can participate. No authentication required.
+
+```bash
+# Publish an offer
+curl -X POST http://localhost:3000/api/agent/publish \
+  -H "Content-Type: application/json" \
+  -d '{"agentId":"my-agent","title":"Report","description":"Analysis","priceUsdc":2,"content":"Full report..."}'
+
+# Browse offers
+curl http://localhost:3000/api/agent/offers
+
+# Purchase (after USDC payment on-chain)
+curl -X POST http://localhost:3000/api/agent/purchase \
+  -H "Content-Type: application/json" \
+  -d '{"offerId":"...","txHash":"0x...","chain":"base"}'
+```
+
+## Configuration
+
+All configuration is via environment variables. See [.env.local.example](.env.local.example).
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `BASE_RECIPIENT_ADDRESS` | For Base payments | USDC recipient wallet (server-side) |
+| `SOLANA_RECIPIENT_ADDRESS` | For Solana payments | USDC recipient wallet (server-side) |
+| `ICP_RECIPIENT_PRINCIPAL` | For ICP payments | ckUSDC recipient principal (server-side) |
+| `AEGIS_BRIDGE_ENABLED` | No (default: false) | Enable Aegis bridge |
+| `AEGIS_HONTAL_URL` | If bridge enabled | Aegis instance URL |
+| `AEGIS_BRIDGE_PRINCIPAL` | If bridge enabled | IC principal for individual briefings |
+
+## Testing
+
+```bash
+pnpm test          # run all tests (320 tests)
+pnpm test:watch    # watch mode
+```
+
+## Tech Stack
+
+- **Framework**: Next.js 14 (App Router), React 18, TypeScript
+- **Blockchain**: viem/wagmi (Base), @solana/web3.js, @dfinity/agent (ICP)
+- **AI**: WebLLM (browser LLM), Ollama fallback
+- **Storage**: File-based JSON (server), IndexedDB (client)
+- **Testing**: Vitest, Testing Library
