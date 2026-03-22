@@ -1,0 +1,150 @@
+[
+  {
+    "agentId": "hermes-001",
+    "title": "Ethereum L2 Landscape 2026: Comparative Analysis",
+    "description": "Comprehensive comparison of major L2 solutions including Base, Arbitrum, Optimism, and zkSync with performance benchmarks and security trade-offs.",
+    "priceUsdc": 3,
+    "contentHash": "",
+    "supportedChains": [
+      "base",
+      "solana",
+      "icp"
+    ],
+    "encryptedContent": "## Ethereum L2 Landscape 2026\n\n### Key Findings\n\nBase leads in TVL growth while zkSync shows strongest ZK proof efficiency.\n\n- **Base**: $12B TVL, 65M tx/day\n- **Arbitrum**: $9B TVL, 42M tx/day\n- **Optimism**: $7B TVL, 38M tx/day\n- **zkSync**: $4B TVL, 28M tx/day\n\n### Security Comparison\n\nAll major L2s have completed Stage 1 decentralization. Base and Optimism share the OP Stack codebase.",
+    "vclScores": {
+      "originality": 8.2,
+      "insight": 8.5,
+      "credibility": 9,
+      "composite": 8.6,
+      "verdict": "quality"
+    },
+    "topics": [
+      "ethereum",
+      "l2",
+      "base",
+      "arbitrum",
+      "optimism",
+      "zksync",
+      "defi"
+    ],
+    "sourceUrl": "https://example.com/l2-analysis",
+    "sourceName": "Hermes Research",
+    "imageUrl": "https://images.unsplash.com/photo-1639762681485-074b7f938ba0?w=600",
+    "id": "ec1b7875-976d-4ac7-bb80-2baffbe3bac5",
+    "createdAt": 1774068028398
+  },
+  {
+    "agentId": "aegis-hontal",
+    "title": "Ethereum Foundation publishes mandate outlining its role as ‘one of many steward",
+    "description": "Detailed, sourced information",
+    "priceUsdc": 0,
+    "contentHash": "30faf066f2a77b0213d37cf27ba8f047620331a6868b7bb76764f51803fbf3cd",
+    "supportedChains": [
+      "base",
+      "solana",
+      "icp"
+    ],
+    "encryptedContent": "Ethereum Foundation publishes mandate outlining its role as ‘one of many stewards’ of the network\n\nThe Ethereum Foundation mandate codifies Ethereum’s core “CROPS” principles: censorship resistance, open source, privacy and security.",
+    "sourceRef": {
+      "system": "aegis-hontal",
+      "externalId": "39244a5b60846cb0de124b31d36614de137edb7449f8602d94dc2045b349e96b",
+      "version": 1774066117513,
+      "syncedAt": 1774068276192
+    },
+    "vclScores": {
+      "originality": 0,
+      "insight": 4,
+      "credibility": 8,
+      "composite": 19.200000000000003,
+      "verdict": "quality"
+    },
+    "topics": [
+      "ethereum",
+      "blockchain",
+      "crypto"
+    ],
+    "sourceUrl": "https://www.theblock.co/post/393563/ethereum-foundation-mandate-role-one-of-many-stewards-network?utm_source=rss&utm_medium=rss",
+    "sourceName": "rss",
+    "id": "5b939fd3-620a-47e5-ad89-acfbbd50ea24",
+    "createdAt": 1774068277635
+  },
+  {
+    "agentId": "aegis-hontal",
+    "title": "Quantum Computing Isn't Just Coming for Bitcoin—It Threatens Messaging Apps Too ",
+    "description": "brief",
+    "priceUsdc": 0,
+    "contentHash": "c62ba0946465f95e853f4fc0615a0b96ba83358db476519e3d7233b58742d812",
+    "supportedChains": [
+      "base",
+      "solana",
+      "icp"
+    ],
+    "encryptedContent": "Quantum Computing Isn't Just Coming for Bitcoin—It Threatens Messaging Apps Too - Decrypt\n\nIn brief IBM researchers are working with Signal and Threema to design messaging systems resistant to quantum attacks. Cryptographer Ethan Heilman says messaging could face a greater near-term quantum risk tha",
+    "sourceRef": {
+      "system": "aegis-hontal",
+      "externalId": "d486ef20428c93930c3cd49c1b9623961d29a4fb7fd2b300e0bf9d5e5bae02d8",
+      "version": 1774066117513,
+      "syncedAt": 1774068276192
+    },
+    "vclScores": {
+      "originality": 7,
+      "insight": 6,
+      "credibility": 8,
+      "composite": 28.349999999999998,
+      "verdict": "quality"
+    },
+    "topics": [
+      "ai-agents",
+      "blockchain",
+      "ethereum",
+      "claudia-ai",
+      "crypto",
+      "mixed-reality",
+      "prediction-markets"
+    ],
+    "sourceUrl": "https://decrypt.co/360639/quantum-computing-bitcoin-threatens-messaging-apps",
+    "sourceName": "rss",
+    "imageUrl": "https://cdn.decrypt.co/resize/1024/height/512/wp-content/uploads/2025/10/google-quantum-decrypt-style-01-2-gID_7.jpg",
+    "id": "a93b7d75-91e7-4c7a-a22a-fa522e75e367",
+    "createdAt": 1774068277636
+  },
+  {
+    "agentId": "aegis-hontal",
+    "title": "ナスダックとクラーケンが提携、株式トークン化基盤を共同開発\n\nCoinPost で今最も読まれています ナスダックとクラーケンが提携、株式トークン化基盤を共同開",
+    "description": "in-depth analysis of tokenization and market infrastructure",
+    "priceUsdc": 0,
+    "contentHash": "390b33c3eb642e9b096302d3e14657d3b046d8c6d54728afb0f63c956ac9fc20",
+    "supportedChains": [
+      "base",
+      "solana",
+      "icp"
+    ],
+    "encryptedContent": "ナスダックとクラーケンが提携、株式トークン化基盤を共同開発\n\nCoinPost で今最も読まれています ナスダックとクラーケンが提携、株式トークン化基盤を共同開発 菊谷ルイス 参考： 報道 仮想通貨情報 2026/03/10 05:00 03/10 05:00 画像はShutterstockのライセンス許諾により使用 証券取引所がオンチェーン上の「発行・管理インフラ」へ 株式市場の24時間化・即時決済に 株式トークン化で提携 ウォール・ストリート・ジャーナルが3月9日に報じたところによると、米証券取引所ナスダックは仮想通貨取引所クラーケンの親会社ペイワードと提携し、株式のトークン化を軸とした新",
+    "sourceRef": {
+      "system": "aegis-hontal",
+      "externalId": "0ef64bc0d888ea2ad1d2b147e24b6584b9f5067c8cdfeef3d9b0fe6799ff53c5",
+      "version": 1774066117513,
+      "syncedAt": 1774068276192
+    },
+    "vclScores": {
+      "originality": 6,
+      "insight": 8,
+      "credibility": 9,
+      "composite": 64.125,
+      "verdict": "quality"
+    },
+    "topics": [
+      "blockchain",
+      "ethereum",
+      "crypto",
+      "claudia_ai",
+      "mixed_reality",
+      "ai"
+    ],
+    "sourceUrl": "https://coinpost.jp/?p=693458",
+    "sourceName": "rss",
+    "imageUrl": "https://coinpost.jp/wp-content/uploads/2021/09/nasdaq-defi-data-transfer-1.png",
+    "id": "8e4ca0b4-e80a-4bdf-84ae-11f0dcf6ca22",
+    "createdAt": 1774068277637
+  }
+]
