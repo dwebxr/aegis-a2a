@@ -11,6 +11,15 @@ const mockActor = {
     if (idx >= 0) canisterOffers[idx] = offer;
     else canisterOffers.push(offer);
   }),
+  get_offer: vi.fn().mockImplementation(async (id: string) => {
+    const o = canisterOffers.find((o: any) => o.id === id);
+    return o ? [o] : [];
+  }),
+  delete_offer: vi.fn().mockImplementation(async (id: string) => {
+    const idx = canisterOffers.findIndex((o: any) => o.id === id);
+    if (idx >= 0) { canisterOffers.splice(idx, 1); return true; }
+    return false;
+  }),
   get_offers: vi.fn().mockImplementation(async () => [...canisterOffers]),
   submit_receipt: vi.fn().mockImplementation(async (receipt: any) => {
     canisterReceipts.set(receipt.txHash, receipt);

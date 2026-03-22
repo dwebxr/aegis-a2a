@@ -84,8 +84,8 @@ export async function addOffer(
 }
 
 export async function getOffer(id: string): Promise<Offer | undefined> {
-  const all = await listOffers();
-  return all.find((o) => o.id === id);
+  const result = await getBackendActor().get_offer(id);
+  return result.length > 0 ? fromCanisterOffer(result[0] as CanisterOffer) : undefined;
 }
 
 const CANISTER_PAGE_SIZE = BigInt(100);
@@ -151,6 +151,10 @@ export async function findOfferBySourceRef(
 export async function listOffersBySource(system: string): Promise<Offer[]> {
   const all = await listOffers();
   return all.filter((o) => o.sourceRef?.system === system);
+}
+
+export async function removeOffer(id: string): Promise<boolean> {
+  return getBackendActor().delete_offer(id);
 }
 
 export async function recordPurchase(

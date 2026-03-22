@@ -6,7 +6,7 @@ import type {
   ChangesResponse,
 } from "@/types/bridge";
 import type { Offer } from "@/types/offer";
-import { addOffer, updateOffer, listOffersBySource } from "@/services/content/store";
+import { addOffer, updateOffer, removeOffer, listOffersBySource } from "@/services/content/store";
 import { transformBriefingItems } from "./transform";
 import { fetchOgImage } from "@/lib/ogp";
 import { log } from "@/lib/logger";
@@ -104,11 +104,11 @@ export interface SyncResult {
   created: number;
   updated: number;
   skipped: number;
-  stale: number;
+  removed: number;
 }
 
 export async function syncFromAegis(config: BridgeConfig): Promise<SyncResult> {
-  const result: SyncResult = { created: 0, updated: 0, skipped: 0, stale: 0 };
+  const result: SyncResult = { created: 0, updated: 0, skipped: 0, removed: 0 };
 
   // Check /changes first (free, no x402) to skip unnecessary briefing fetches
   if (syncState.lastSyncAt > 0 && syncState.consecutiveFailures === 0) {
@@ -190,13 +190,9 @@ export async function syncFromAegis(config: BridgeConfig): Promise<SyncResult> {
     existingByExternalId.delete(externalId);
   }
 
-  // Canister has no delete API — stale offers remain and are still served
-  result.stale = existingByExternalId.size;
-  if (result.stale > 0) {
-    log.warn("Stale bridged offers (no canister delete)", {
-      count: result.stale,
-      ids: Array.from(existingByExternalId.keys()),
-    });
+  for (const staleOffer of Array.from(existingByExternalId.values())) {
+    await removeOffer(staleOffer.id);
+    result.removed++;
   }
 
   syncState = {

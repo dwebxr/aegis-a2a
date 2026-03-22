@@ -11,6 +11,15 @@ const mockActor = {
     if (idx >= 0) canisterOffers[idx] = offer;
     else canisterOffers.push(offer);
   }),
+  get_offer: vi.fn().mockImplementation(async (id: string) => {
+    const o = canisterOffers.find((o: any) => o.id === id);
+    return o ? [o] : [];
+  }),
+  delete_offer: vi.fn().mockImplementation(async (id: string) => {
+    const idx = canisterOffers.findIndex((o: any) => o.id === id);
+    if (idx >= 0) { canisterOffers.splice(idx, 1); return true; }
+    return false;
+  }),
   get_offers: vi.fn().mockImplementation(async () => [...canisterOffers]),
   submit_receipt: vi.fn().mockResolvedValue(undefined),
   get_receipt: vi.fn().mockResolvedValue([]),
@@ -125,7 +134,7 @@ describe("syncFromAegis", () => {
 
     expect(result.created).toBe(2);
     expect(result.updated).toBe(0);
-    expect(result.stale).toBe(0);
+    expect(result.removed).toBe(0);
 
     const bridged = await listOffersBySource("aegis-hontal");
     expect(bridged).toHaveLength(2);
@@ -201,7 +210,7 @@ describe("syncFromAegis", () => {
     const { syncFromAegis } = await import("@/services/bridge/sync");
     const result = await syncFromAegis(makeConfig());
 
-    expect(result.stale).toBe(2);
+    expect(result.removed).toBe(2);
     expect(result.created).toBe(1);
   });
 

@@ -13,6 +13,15 @@ const mockActor = {
     if (idx >= 0) canisterOffers[idx] = offer;
     else canisterOffers.push(offer);
   }),
+  get_offer: vi.fn().mockImplementation(async (id: string) => {
+    const o = canisterOffers.find((o: any) => o.id === id);
+    return o ? [o] : [];
+  }),
+  delete_offer: vi.fn().mockImplementation(async (id: string) => {
+    const idx = canisterOffers.findIndex((o: any) => o.id === id);
+    if (idx >= 0) { canisterOffers.splice(idx, 1); return true; }
+    return false;
+  }),
   get_offers: vi.fn().mockImplementation(async () => [...canisterOffers]),
   submit_receipt: vi.fn().mockResolvedValue(undefined),
   get_receipt: vi.fn().mockResolvedValue([]),
@@ -121,7 +130,7 @@ describe("runSyncCycle state tracking", () => {
     expect(result!.created).toBeGreaterThanOrEqual(0);
     expect(typeof result!.updated).toBe("number");
     expect(typeof result!.skipped).toBe("number");
-    expect(typeof result!.stale).toBe("number");
+    expect(typeof result!.removed).toBe("number");
   });
 
   it("updates sync state after successful sync", async () => {
@@ -186,10 +195,10 @@ describe("syncFromAegis state accumulation", () => {
     expect(after).toBeGreaterThan(before);
   });
 
-  it("counts stale offers without attempting deletion", async () => {
+  it("removes stale offers via delete_offer", async () => {
     const result = await syncFromAegis(baseConfig);
-    expect(typeof result.stale).toBe("number");
-    expect(result.stale).toBeGreaterThanOrEqual(0);
+    expect(typeof result.removed).toBe("number");
+    expect(result.removed).toBeGreaterThanOrEqual(0);
   });
 });
 

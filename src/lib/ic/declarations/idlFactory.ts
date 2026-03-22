@@ -21,7 +21,9 @@ export const idlFactory = ({ IDL }: { IDL: any }) => {
   });
   return IDL.Service({
     put_offer: IDL.Func([Offer], [], []),
+    get_offer: IDL.Func([IDL.Text], [IDL.Opt(Offer)], ["query"]),
     get_offers: IDL.Func([IDL.Nat, IDL.Nat], [IDL.Vec(Offer)], ["query"]),
+    delete_offer: IDL.Func([IDL.Text], [IDL.Bool], []),
     submit_receipt: IDL.Func([Receipt], [], []),
     get_receipt: IDL.Func([IDL.Text], [IDL.Opt(Receipt)], ["query"]),
     verify_payment_manual: IDL.Func([IDL.Text], [IDL.Bool], []),
