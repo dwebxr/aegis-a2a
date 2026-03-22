@@ -18,153 +18,148 @@ export function OfferCard({ offer, onBuy, onView }: OfferCardProps) {
   const vcl = offer.vclScores;
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden hover:border-gray-700 transition-colors flex flex-col">
+    <div className="group bg-gray-900/60 border border-gray-800/50 rounded-2xl overflow-hidden hover:bg-gray-900/80 hover:border-gray-700/60 transition-all duration-300 flex flex-col">
       {/* Image */}
       {offer.imageUrl && (
-        <div className="relative w-full h-40 bg-gray-800">
+        <div className="relative w-full h-44 bg-gray-800 overflow-hidden">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={offer.imageUrl}
             alt={offer.title}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = "none";
             }}
           />
+          <div className="absolute inset-0 bg-gradient-to-t from-gray-900/80 via-transparent to-transparent" />
+          {/* Floating badges on image */}
+          <div className="absolute top-3 left-3 right-3 flex items-center justify-between">
+            <div className="flex gap-1.5">
+              {isBridged && (
+                <span className="text-[10px] bg-indigo-900/70 backdrop-blur-sm text-indigo-300 px-2 py-0.5 rounded-md">
+                  Bridge
+                </span>
+              )}
+              {vcl && (
+                <span className="text-[10px] bg-purple-900/70 backdrop-blur-sm text-purple-300 px-2 py-0.5 rounded-md">
+                  VCL {vcl.composite.toFixed(1)}
+                </span>
+              )}
+            </div>
+            {resonanceScore !== null && (
+              <span
+                className={`text-[10px] backdrop-blur-sm px-2 py-0.5 rounded-md ${
+                  resonanceScore >= 70
+                    ? "bg-green-900/70 text-green-400"
+                    : resonanceScore >= 40
+                    ? "bg-yellow-900/70 text-yellow-400"
+                    : "bg-gray-800/70 text-gray-500"
+                }`}
+              >
+                {resonanceScore}%
+              </span>
+            )}
+          </div>
         </div>
       )}
 
-      <div className="p-5 flex flex-col flex-1">
-        {/* Header: badges row */}
-        <div className="flex items-center gap-2 mb-2 flex-wrap">
-          {isBridged && (
-            <span className="text-xs bg-indigo-900/50 text-indigo-300 px-2 py-0.5 rounded">
-              Aegis Bridge
-            </span>
-          )}
-          {resonanceScore !== null && (
-            <span
-              className={`text-xs px-2 py-0.5 rounded-full ${
-                resonanceScore >= 70
-                  ? "bg-green-900/50 text-green-400"
-                  : resonanceScore >= 40
-                  ? "bg-yellow-900/50 text-yellow-400"
-                  : "bg-gray-800 text-gray-500"
-              }`}
-            >
-              {resonanceScore}% match
-            </span>
-          )}
-          {vcl && (
-            <span className="text-xs bg-purple-900/50 text-purple-300 px-2 py-0.5 rounded">
-              VCL {vcl.composite.toFixed(1)}
-            </span>
-          )}
-        </div>
+      <div className="px-5 pt-4 pb-5 flex flex-col flex-1">
+        {/* Badges when no image */}
+        {!offer.imageUrl && (
+          <div className="flex items-center gap-1.5 mb-2">
+            {isBridged && (
+              <span className="text-[10px] bg-indigo-900/50 text-indigo-300 px-2 py-0.5 rounded-md">Bridge</span>
+            )}
+            {vcl && (
+              <span className="text-[10px] bg-purple-900/50 text-purple-300 px-2 py-0.5 rounded-md">VCL {vcl.composite.toFixed(1)}</span>
+            )}
+            {resonanceScore !== null && (
+              <span className={`text-[10px] px-2 py-0.5 rounded-md ${
+                resonanceScore >= 70 ? "bg-green-900/50 text-green-400" : resonanceScore >= 40 ? "bg-yellow-900/50 text-yellow-400" : "bg-gray-800 text-gray-500"
+              }`}>{resonanceScore}%</span>
+            )}
+          </div>
+        )}
 
         {/* Title */}
-        <h3 className="text-base font-semibold text-white mb-2 line-clamp-2 leading-snug">
+        <h3 className="text-[15px] font-medium text-white mb-1.5 line-clamp-2 leading-snug tracking-tight">
           {offer.title}
         </h3>
 
         {/* Description */}
-        <p className="text-gray-400 text-sm mb-3 line-clamp-3 leading-relaxed">
+        <p className="text-gray-500 text-sm mb-3 line-clamp-2 leading-relaxed">
           {offer.description}
         </p>
 
         {/* Topics */}
         {offer.topics && offer.topics.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            {offer.topics.slice(0, 5).map((topic) => (
-              <span
-                key={topic}
-                className="text-xs bg-gray-800/80 text-gray-300 px-2 py-0.5 rounded-full"
-              >
+          <div className="flex flex-wrap gap-1 mb-3">
+            {offer.topics.slice(0, 4).map((topic) => (
+              <span key={topic} className="text-[10px] bg-gray-800/40 text-gray-500 px-2 py-0.5 rounded">
                 {topic}
               </span>
             ))}
-            {offer.topics.length > 5 && (
-              <span className="text-xs text-gray-500">
-                +{offer.topics.length - 5}
-              </span>
+            {offer.topics.length > 4 && (
+              <span className="text-[10px] text-gray-600">+{offer.topics.length - 4}</span>
             )}
           </div>
         )}
 
-        {/* VCL Score Details */}
+        {/* VCL Score Bars */}
         {vcl && (
-          <div className="grid grid-cols-3 gap-2 mb-3 text-xs">
-            <div className="bg-gray-800/50 rounded-lg px-2 py-1.5 text-center">
-              <div className="text-gray-500 mb-0.5">Originality</div>
-              <div className="text-gray-200 font-medium">{vcl.originality.toFixed(1)}</div>
-            </div>
-            <div className="bg-gray-800/50 rounded-lg px-2 py-1.5 text-center">
-              <div className="text-gray-500 mb-0.5">Insight</div>
-              <div className="text-gray-200 font-medium">{vcl.insight.toFixed(1)}</div>
-            </div>
-            <div className="bg-gray-800/50 rounded-lg px-2 py-1.5 text-center">
-              <div className="text-gray-500 mb-0.5">Credibility</div>
-              <div className="text-gray-200 font-medium">{vcl.credibility.toFixed(1)}</div>
-            </div>
+          <div className="flex flex-col gap-1.5 mb-3">
+            {([
+              ["ORI", vcl.originality],
+              ["INS", vcl.insight],
+              ["CRD", vcl.credibility],
+            ] as const).map(([label, value]) => (
+              <div key={label} className="flex items-center gap-2">
+                <span className="text-[10px] text-gray-600 w-6">{label}</span>
+                <div className="w-12 h-1 bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-500/60 to-blue-400/80 rounded-full"
+                    style={{ width: `${(value / 10) * 100}%` }}
+                  />
+                </div>
+                <span className="text-[10px] text-gray-500 font-mono">{value.toFixed(1)}</span>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* Spacer to push footer down */}
         <div className="flex-1" />
 
-        {/* Source link */}
-        {offer.sourceUrl && (
-          <div className="mb-3 text-xs">
-            <a
-              href={offer.sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-400 hover:text-blue-300 transition-colors inline-flex items-center gap-1"
-            >
-              <span className="truncate max-w-[200px]">
-                {offer.sourceName || new URL(offer.sourceUrl).hostname}
-              </span>
-              <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-            </a>
-          </div>
-        )}
-
-        {/* Chain tags */}
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          {offer.supportedChains.map((chain) => (
-            <span
-              key={chain}
-              className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded"
-            >
-              {CHAIN_NAMES[chain]}
-            </span>
-          ))}
-        </div>
-
         {/* Price + Action */}
-        <div className="flex justify-between items-center pt-3 border-t border-gray-800">
-          <span className={isFree ? "text-green-400 font-bold" : "text-blue-400 font-bold"}>
-            {isFree ? "Free" : formatUsdc(offer.priceUsdc)}
-          </span>
+        <div className="flex justify-between items-center pt-3 border-t border-gray-800/50">
+          <div className="flex items-center gap-2">
+            <span className={isFree ? "text-green-400/80 font-semibold text-sm" : "text-blue-400 font-semibold text-sm"}>
+              {isFree ? "Free" : formatUsdc(offer.priceUsdc)}
+            </span>
+            {offer.sourceUrl && (
+              <a
+                href={offer.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors truncate max-w-[120px]"
+              >
+                {offer.sourceName || (() => { try { return new URL(offer.sourceUrl!).hostname; } catch { return "source"; } })()}
+              </a>
+            )}
+          </div>
           {isFree ? (
             offer.sourceUrl ? (
               <a
                 href={offer.sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-1.5"
+                className="bg-gray-800 border border-gray-700/50 hover:bg-gray-700 text-gray-300 px-3.5 py-1.5 rounded-lg text-sm transition-colors inline-flex items-center gap-1"
               >
-                Read
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
+                Read <span className="text-gray-500">&rarr;</span>
               </a>
             ) : (
               <button
                 onClick={() => onView?.(offer)}
-                className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                className="bg-gray-800 border border-gray-700/50 hover:bg-gray-700 text-gray-300 px-3.5 py-1.5 rounded-lg text-sm transition-colors"
               >
                 View
               </button>
@@ -172,7 +167,7 @@ export function OfferCard({ offer, onBuy, onView }: OfferCardProps) {
           ) : (
             <button
               onClick={() => onBuy(offer)}
-              className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              className="bg-blue-600/90 hover:bg-blue-500 hover:shadow-md hover:shadow-blue-500/20 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200"
             >
               Buy
             </button>
@@ -180,9 +175,9 @@ export function OfferCard({ offer, onBuy, onView }: OfferCardProps) {
         </div>
 
         {/* Meta footer */}
-        <div className="mt-3 text-xs text-gray-600">
-          Agent: {offer.agentId} &middot;{" "}
-          {new Date(offer.createdAt).toLocaleDateString()}
+        <div className="mt-2 flex items-center justify-between text-[10px] text-gray-700">
+          <span className="font-mono">{offer.agentId}</span>
+          <span>{offer.supportedChains.map((c) => CHAIN_NAMES[c]).join(" / ")}</span>
         </div>
       </div>
     </div>

@@ -73,48 +73,53 @@ export function A2AFeed() {
 
   return (
     <div>
-      {/* Tab Switcher */}
-      <div className="flex gap-1 bg-gray-900 rounded-lg p-1 mb-6">
-        {(["free", "premium"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
-              tab === t
-                ? t === "premium" ? "bg-blue-600 text-white" : "bg-gray-700 text-white"
-                : "text-gray-400 hover:text-white"
-            }`}
-          >
-            {t === "free" ? "Free" : "Premium (USDC)"}
-          </button>
-        ))}
-      </div>
+      {/* Toolbar: tabs + chain filter in one row */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+        <div className="flex gap-1 bg-gray-900/80 border border-gray-800/50 rounded-xl p-1">
+          {(["free", "premium"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                tab === t
+                  ? t === "premium"
+                    ? "bg-blue-600/90 text-white shadow-md shadow-blue-500/20"
+                    : "bg-gray-700/80 text-white"
+                  : "text-gray-500 hover:text-gray-300"
+              }`}
+            >
+              {t === "free" ? "Free" : "Premium"}
+            </button>
+          ))}
+        </div>
 
-      {/* Chain Filter */}
-      <div className="flex gap-2 mb-6">
-        <button
-          onClick={() => setChainFilter(undefined)}
-          className={`text-xs px-3 py-1.5 rounded-full ${
-            !chainFilter ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-          }`}
-        >
-          All Chains
-        </button>
-        {(["base", "solana", "icp"] as const).map((chain) => (
+        <div className="flex gap-1.5">
           <button
-            key={chain}
-            onClick={() => setChainFilter(chain)}
-            className={`text-xs px-3 py-1.5 rounded-full ${
-              chainFilter === chain ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+            onClick={() => setChainFilter(undefined)}
+            className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
+              !chainFilter ? "bg-gray-700/80 text-white" : "bg-gray-800/50 text-gray-500 hover:text-gray-300"
             }`}
           >
-            {CHAIN_ICONS[chain]} {CHAIN_NAMES[chain]}
+            All
           </button>
-        ))}
+          {(["base", "solana", "icp"] as const).map((chain) => (
+            <button
+              key={chain}
+              onClick={() => setChainFilter(chain)}
+              className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
+                chainFilter === chain ? "bg-gray-700/80 text-white" : "bg-gray-800/50 text-gray-500 hover:text-gray-300"
+              }`}
+            >
+              {CHAIN_ICONS[chain]} {CHAIN_NAMES[chain]}
+            </button>
+          ))}
+        </div>
       </div>
 
       {isLoading && (
-        <div className="text-center text-gray-500 py-12">Loading offers...</div>
+        <div className="flex justify-center py-16">
+          <div className="w-6 h-6 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin" />
+        </div>
       )}
       {error && (
         <div className="text-center text-red-400 py-12">
@@ -124,9 +129,9 @@ export function A2AFeed() {
       )}
 
       {!isLoading && !error && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {filteredOffers.length === 0 ? (
-            <div className="col-span-full text-center text-gray-500 py-12">
+            <div className="col-span-full text-center text-gray-600 py-16">
               No {tab} offers available
             </div>
           ) : (
@@ -138,7 +143,7 @@ export function A2AFeed() {
       )}
 
       {selectedOffer && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <MultiChainPayButton
             offer={selectedOffer}
             onUnlocked={(content) => {
