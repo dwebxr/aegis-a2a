@@ -184,3 +184,16 @@ export async function isTransactionUsed(txHash: string): Promise<boolean> {
   const result = await actor.get_receipt(txHash);
   return result.length > 0;
 }
+
+// Records A2A content consumption back to Aegis canister for ecosystem analytics
+export async function recordEngagement(contentHash: string, feeAmount = 0): Promise<void> {
+  const { Principal } = await import("@dfinity/principal");
+  const actor = getBackendActor();
+  const a2aPrincipal = Principal.anonymous();
+  await actor.recordD2AMatch(
+    contentHash,
+    a2aPrincipal,
+    contentHash,
+    BigInt(Math.round(feeAmount * USDC_SCALE)),
+  );
+}

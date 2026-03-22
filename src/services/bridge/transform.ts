@@ -20,6 +20,13 @@ function extractImageUrl(content: string): string | undefined {
   return undefined;
 }
 
+// briefingScore-based pricing: high-value briefings become premium A2A offers
+function getBridgePrice(item: D2ABriefingItem, config: BridgeConfig): number {
+  if (item.briefingScore >= 80) return config.priceTierMap.premium ?? 0;
+  if (item.briefingScore >= 60) return config.priceTierMap.basic ?? 0;
+  return config.priceTierMap.free ?? 0;
+}
+
 export function transformBriefingItem(
   item: D2ABriefingItem,
   config: BridgeConfig,
@@ -46,7 +53,7 @@ export function transformBriefingItem(
     agentId: config.agentId,
     title: item.title,
     description: item.reason,
-    priceUsdc: 0,
+    priceUsdc: getBridgePrice(item, config),
     contentHash: createHash("sha256").update(item.content).digest("hex"),
     supportedChains: [...config.defaultChains],
     encryptedContent: item.content,

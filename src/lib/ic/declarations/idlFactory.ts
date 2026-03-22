@@ -32,5 +32,11 @@ export const idlFactory = ({ IDL }: { IDL: any }) => {
       [IDL.Record({ offerCount: IDL.Nat, receiptCount: IDL.Nat })],
       ["query"],
     ),
+    // D2A engagement tracking — records A2A content consumption back to Aegis
+    recordD2AMatch: IDL.Func(
+      [IDL.Text, IDL.Principal, IDL.Text, IDL.Nat],
+      [IDL.Variant({ ok: IDL.Text, err: IDL.Text })],
+      [],
+    ),
   });
 };

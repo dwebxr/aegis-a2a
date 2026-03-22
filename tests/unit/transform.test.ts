@@ -72,16 +72,15 @@ describe("transformBriefingItem", () => {
     expect(r1!.sourceRef!.externalId).not.toBe(r2!.sourceRef!.externalId);
   });
 
-  it("sets priceUsdc to 0 for all bridge offers", () => {
+  it("prices bridge offers based on briefingScore tiers", () => {
     const config = makeConfig();
-    const highScore = makeItem({
-      scores: { originality: 9, insight: 9, credibility: 9, composite: 9.5 },
-    });
-    const midScore = makeItem({
-      scores: { originality: 7, insight: 7, credibility: 8, composite: 7.5 },
-    });
-    expect(transformBriefingItem(highScore, config, 1)!.priceUsdc).toBe(0);
-    expect(transformBriefingItem(midScore, config, 1)!.priceUsdc).toBe(0);
+    // briefingScore >= 80 → premium (10), >= 60 → basic (2), else → free (0)
+    const premium = makeItem({ briefingScore: 85 });
+    const basic = makeItem({ briefingScore: 65 });
+    const free = makeItem({ briefingScore: 40 });
+    expect(transformBriefingItem(premium, config, 1)!.priceUsdc).toBe(10);
+    expect(transformBriefingItem(basic, config, 1)!.priceUsdc).toBe(2);
+    expect(transformBriefingItem(free, config, 1)!.priceUsdc).toBe(0);
   });
 
   it("sets description to item.reason", () => {

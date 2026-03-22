@@ -176,7 +176,19 @@ export function OfferCard({ offer, onBuy, onView }: OfferCardProps) {
 
         {/* Meta footer */}
         <div className="mt-2 flex items-center justify-between text-[10px] text-gray-700">
-          <span className="font-mono">{offer.agentId}</span>
+          {isBridged ? (
+            <a
+              href={`https://aegis.dwebxr.xyz?utm_source=a2a&utm_medium=bridge&utm_content=${offer.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-indigo-400/60 hover:text-indigo-300 transition-colors"
+            >
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" fill="none" /></svg>
+              Curated by Aegis
+            </a>
+          ) : (
+            <span className="font-mono">{offer.agentId}</span>
+          )}
           <span>{offer.supportedChains.map((c) => CHAIN_NAMES[c]).join(" / ")}</span>
         </div>
       </div>

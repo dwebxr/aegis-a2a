@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOffer } from "@/services/content/store";
+import { getOffer, recordEngagement } from "@/services/content/store";
 import { log } from "@/lib/logger";
 
 export async function GET(req: NextRequest) {
@@ -16,6 +16,11 @@ export async function GET(req: NextRequest) {
 
     if (offer.priceUsdc !== 0) {
       return NextResponse.json({ error: "This offer is not free" }, { status: 402 });
+    }
+
+    // Record engagement for Aegis-bridged content (fire-and-forget)
+    if (offer.sourceRef?.system === "aegis-hontal") {
+      recordEngagement(offer.contentHash).catch(() => {});
     }
 
     return NextResponse.json({

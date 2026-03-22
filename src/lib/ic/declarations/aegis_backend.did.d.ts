@@ -1,4 +1,5 @@
 import type { ActorMethod } from "@dfinity/agent";
+import type { Principal } from "@dfinity/principal";
 
 export interface Offer {
   id: string;
@@ -30,4 +31,5 @@ export interface _SERVICE {
   get_receipt: ActorMethod<[string], [] | [Receipt]>;
   verify_payment_manual: ActorMethod<[string], boolean>;
   get_a2a_stats: ActorMethod<[], { offerCount: bigint; receiptCount: bigint }>;
+  recordD2AMatch: ActorMethod<[string, Principal, string, bigint], { ok: string } | { err: string }>;
 }
