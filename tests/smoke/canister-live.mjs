@@ -44,7 +44,8 @@ try {
   console.log(`   offerCount=${stats.offerCount}, receiptCount=${stats.receiptCount}`);
 
   console.log("2. get_offers (query, page 0)");
-  const offers = await actor.get_offers(BigInt(0), BigInt(5));
+  // Canister signature: get_offers(limit, offset)
+  const offers = await actor.get_offers(BigInt(5), BigInt(0));
   assert("returns an array", Array.isArray(offers));
   assert("offers have expected shape", offers.length === 0 || (typeof offers[0].id === "string" && typeof offers[0].priceUSDC === "bigint"));
   console.log(`   returned ${offers.length} offers`);

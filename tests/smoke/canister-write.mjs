@@ -44,7 +44,7 @@ try {
   await sleep(3000);
 
   console.log("3. verify offer exists via get_offers");
-  const offers = await actor.get_offers(BigInt(0), BigInt(100));
+  const offers = await actor.get_offers(BigInt(100), BigInt(0));
   const found = offers.find(o => o.id === TEST_ID);
   if (found) {
     console.log("  ✓ offer found in canister");

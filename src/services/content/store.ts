@@ -95,8 +95,9 @@ async function fetchAllOffers(): Promise<CanisterOffer[]> {
   const actor = getBackendActor();
   const all: CanisterOffer[] = [];
   let offset = BigInt(0);
+  // Canister signature: get_offers(limit, offset)
   while (all.length < MAX_TOTAL_OFFERS) {
-    const page = await actor.get_offers(offset, CANISTER_PAGE_SIZE);
+    const page = await actor.get_offers(CANISTER_PAGE_SIZE, offset);
     all.push(...page);
     if (page.length < Number(CANISTER_PAGE_SIZE)) break;
     offset += CANISTER_PAGE_SIZE;
