@@ -2,6 +2,7 @@ import type { ChainType } from "@/types/offer";
 import { verify } from "@/services/verification";
 import { getRecipientAddress } from "@/lib/constants";
 import { getOffer, isTransactionUsed, recordPurchase, recordEngagement } from "./store";
+import { log } from "@/lib/logger";
 
 export interface UnlockResult {
   success: boolean;
@@ -55,7 +56,7 @@ export async function unlockContent(
 
   // Record engagement for bridged content — enables ecosystem revenue tracking
   if (offer.sourceRef?.system === "aegis-hontal") {
-    recordEngagement(offer.contentHash, offer.priceUsdc).catch(() => {});
+    recordEngagement(offer.contentHash).catch((err) => log.debug("Engagement recording failed", { error: String(err) }));
   }
 
   return {

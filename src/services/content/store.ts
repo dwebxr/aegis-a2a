@@ -185,15 +185,17 @@ export async function isTransactionUsed(txHash: string): Promise<boolean> {
   return result.length > 0;
 }
 
-// Records A2A content consumption back to Aegis canister for ecosystem analytics
-export async function recordEngagement(contentHash: string, feeAmount = 0): Promise<void> {
-  const { Principal } = await import("@dfinity/principal");
+// Records Bridge content views as receipts for ecosystem analytics.
+// Uses submit_receipt (anonymous-callable) with payer="a2a-view" to distinguish
+// from real purchases. Aegis本体 can query these via get_receipt.
+export async function recordEngagement(contentHash: string): Promise<void> {
   const actor = getBackendActor();
-  const a2aPrincipal = Principal.anonymous();
-  await actor.recordD2AMatch(
+  await actor.submit_receipt({
+    txHash: `view-${contentHash}-${Date.now()}`,
+    chain: "icp",
     contentHash,
-    a2aPrincipal,
-    contentHash,
-    BigInt(Math.round(feeAmount * USDC_SCALE)),
-  );
+    payer: "a2a-view",
+    amount: BigInt(0),
+    verified: true,
+  });
 }

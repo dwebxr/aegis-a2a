@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 
     // Record engagement for Aegis-bridged content (fire-and-forget)
     if (offer.sourceRef?.system === "aegis-hontal") {
-      recordEngagement(offer.contentHash).catch(() => {});
+      recordEngagement(offer.contentHash).catch((err) => log.debug("Engagement recording failed", { error: String(err) }));
     }
 
     return NextResponse.json({
