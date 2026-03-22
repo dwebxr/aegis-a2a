@@ -1,27 +1,44 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import {
+import type { ChainType } from "@/types/offer";
+
+// In-memory canister state for testing
+let canisterOffers: any[] = [];
+let canisterReceipts: Map<string, any> = new Map();
+
+const mockActor = {
+  put_offer: vi.fn().mockImplementation(async (offer: any) => {
+    const idx = canisterOffers.findIndex((o) => o.id === offer.id);
+    if (idx >= 0) canisterOffers[idx] = offer;
+    else canisterOffers.push(offer);
+  }),
+  get_offers: vi.fn().mockImplementation(async () => [...canisterOffers]),
+  submit_receipt: vi.fn().mockImplementation(async (receipt: any) => {
+    canisterReceipts.set(receipt.txHash, receipt);
+  }),
+  get_receipt: vi.fn().mockImplementation(async (txHash: string) => {
+    const r = canisterReceipts.get(txHash);
+    return r ? [r] : [];
+  }),
+  verify_payment_manual: vi.fn().mockResolvedValue(true),
+  get_a2a_stats: vi.fn().mockResolvedValue({ offerCount: BigInt(0), receiptCount: BigInt(0) }),
+};
+
+vi.mock("@/lib/ic/actor", () => ({
+  getBackendActor: () => mockActor,
+}));
+
+const {
   addOffer,
   getOffer,
   listOffers,
-  removeOffer,
   recordPurchase,
-  isPurchased,
-  _resetForTesting,
-} from "@/services/content/store";
-import type { ChainType } from "@/types/offer";
-
-// Mock fs to prevent actual disk writes during tests
-vi.mock("fs", () => ({
-  existsSync: vi.fn().mockReturnValue(false),
-  mkdirSync: vi.fn(),
-  readFileSync: vi.fn().mockReturnValue("[]"),
-  writeFileSync: vi.fn(),
-}));
+  isTransactionUsed,
+} = await import("@/services/content/store");
 
 let createdIds: string[] = [];
 
-function createTestOffer(overrides: Partial<Parameters<typeof addOffer>[0]> = {}) {
-  const offer = addOffer({
+async function createTestOffer(overrides: Partial<Parameters<typeof addOffer>[0]> = {}) {
+  const offer = await addOffer({
     agentId: "agent-1",
     title: "Test Offer",
     description: "Test description",
@@ -36,14 +53,16 @@ function createTestOffer(overrides: Partial<Parameters<typeof addOffer>[0]> = {}
 }
 
 beforeEach(() => {
-  _resetForTesting();
+  vi.clearAllMocks();
+  canisterOffers = [];
+  canisterReceipts = new Map();
   createdIds = [];
 });
 
 describe("addOffer", () => {
-  it("creates an offer with generated id and timestamp", () => {
+  it("creates an offer with generated id and timestamp", async () => {
     const before = Date.now();
-    const offer = createTestOffer();
+    const offer = await createTestOffer();
     const after = Date.now();
 
     expect(offer.id).toBeDefined();
@@ -54,13 +73,13 @@ describe("addOffer", () => {
     expect(offer.priceUsdc).toBe(5);
   });
 
-  it("stores the encrypted content", () => {
-    const offer = createTestOffer({ encryptedContent: "my-secret" });
+  it("stores the encrypted content", async () => {
+    const offer = await createTestOffer({ encryptedContent: "my-secret" });
     expect(offer.encryptedContent).toBe("my-secret");
   });
 
-  it("preserves all fields from input", () => {
-    const offer = createTestOffer({
+  it("preserves all fields from input", async () => {
+    const offer = await createTestOffer({
       agentId: "custom-agent",
       title: "Custom Title",
       description: "Custom desc",
@@ -76,49 +95,50 @@ describe("addOffer", () => {
     expect(offer.supportedChains).toEqual(["icp"]);
   });
 
-  it("generates unique IDs for each offer", () => {
-    const offer1 = createTestOffer();
-    const offer2 = createTestOffer();
+  it("generates unique IDs for each offer", async () => {
+    const offer1 = await createTestOffer();
+    const offer2 = await createTestOffer();
     expect(offer1.id).not.toBe(offer2.id);
   });
 
-  it("handles zero price for free offers", () => {
-    const offer = createTestOffer({ priceUsdc: 0 });
+  it("handles zero price for free offers", async () => {
+    const offer = await createTestOffer({ priceUsdc: 0 });
     expect(offer.priceUsdc).toBe(0);
   });
 });
 
 describe("getOffer", () => {
-  it("retrieves an existing offer by ID", () => {
-    const created = createTestOffer();
-    const retrieved = getOffer(created.id);
-    expect(retrieved).toEqual(created);
+  it("retrieves an existing offer by ID", async () => {
+    const created = await createTestOffer();
+    const retrieved = await getOffer(created.id);
+    expect(retrieved).toBeDefined();
+    expect(retrieved!.id).toBe(created.id);
+    expect(retrieved!.title).toBe(created.title);
   });
 
-  it("returns undefined for non-existent ID", () => {
-    expect(getOffer("non-existent-id")).toBeUndefined();
+  it("returns undefined for non-existent ID", async () => {
+    expect(await getOffer("non-existent-id")).toBeUndefined();
   });
 
-  it("returns undefined for empty string", () => {
-    expect(getOffer("")).toBeUndefined();
+  it("returns undefined for empty string", async () => {
+    expect(await getOffer("")).toBeUndefined();
   });
 });
 
 describe("listOffers", () => {
-  it("returns all offers when no filter is provided", () => {
-    const o1 = createTestOffer({ title: "First" });
-    const o2 = createTestOffer({ title: "Second" });
+  it("returns all offers when no filter is provided", async () => {
+    const o1 = await createTestOffer({ title: "First" });
+    const o2 = await createTestOffer({ title: "Second" });
 
-    const offers = listOffers();
+    const offers = await listOffers();
     const ids = offers.map((o) => o.id);
     expect(ids).toContain(o1.id);
     expect(ids).toContain(o2.id);
   });
 
-  it("returns offers sorted by createdAt descending (newest first)", () => {
-    const o1 = createTestOffer({ title: "First" });
-    // Small delay to ensure different timestamps
-    const o2 = addOffer({
+  it("returns offers sorted by createdAt descending (newest first)", async () => {
+    const o1 = await createTestOffer({ title: "First" });
+    const o2 = await addOffer({
       agentId: "a",
       title: "Second",
       description: "d",
@@ -128,7 +148,7 @@ describe("listOffers", () => {
     });
     createdIds.push(o2.id);
 
-    const offers = listOffers();
+    const offers = await listOffers();
     const o1Idx = offers.findIndex((o) => o.id === o1.id);
     const o2Idx = offers.findIndex((o) => o.id === o2.id);
 
@@ -138,123 +158,100 @@ describe("listOffers", () => {
     }
   });
 
-  it("filters by chain", () => {
-    createTestOffer({ supportedChains: ["base"], title: "Base Only" });
-    createTestOffer({ supportedChains: ["solana"], title: "Solana Only" });
-    createTestOffer({ supportedChains: ["base", "solana"], title: "Both" });
+  it("filters by chain", async () => {
+    await createTestOffer({ supportedChains: ["base"], title: "Base Only" });
+    await createTestOffer({ supportedChains: ["solana"], title: "Solana Only" });
+    await createTestOffer({ supportedChains: ["base", "solana"], title: "Both" });
 
-    const baseOffers = listOffers({ chain: "base" });
+    const baseOffers = await listOffers({ chain: "base" });
     expect(baseOffers.every((o) => o.supportedChains.includes("base"))).toBe(true);
     expect(baseOffers.length).toBeGreaterThanOrEqual(2); // "Base Only" + "Both"
 
-    const solanaOffers = listOffers({ chain: "solana" });
+    const solanaOffers = await listOffers({ chain: "solana" });
     expect(solanaOffers.every((o) => o.supportedChains.includes("solana"))).toBe(true);
 
-    const icpOffers = listOffers({ chain: "icp" });
+    const icpOffers = await listOffers({ chain: "icp" });
     expect(icpOffers.every((o) => o.supportedChains.includes("icp"))).toBe(true);
   });
 
-  it("filters by minPrice", () => {
-    createTestOffer({ priceUsdc: 1, title: "Cheap" });
-    createTestOffer({ priceUsdc: 10, title: "Medium" });
-    createTestOffer({ priceUsdc: 100, title: "Expensive" });
+  it("filters by minPrice", async () => {
+    await createTestOffer({ priceUsdc: 1, title: "Cheap" });
+    await createTestOffer({ priceUsdc: 10, title: "Medium" });
+    await createTestOffer({ priceUsdc: 100, title: "Expensive" });
 
-    const filtered = listOffers({ minPrice: 10 });
+    const filtered = await listOffers({ minPrice: 10 });
     expect(filtered.every((o) => o.priceUsdc >= 10)).toBe(true);
     expect(filtered.some((o) => o.priceUsdc === 1)).toBe(false);
   });
 
-  it("filters by maxPrice", () => {
-    createTestOffer({ priceUsdc: 1, title: "Cheap2" });
-    createTestOffer({ priceUsdc: 10, title: "Medium2" });
-    createTestOffer({ priceUsdc: 100, title: "Expensive2" });
+  it("filters by maxPrice", async () => {
+    await createTestOffer({ priceUsdc: 1, title: "Cheap2" });
+    await createTestOffer({ priceUsdc: 10, title: "Medium2" });
+    await createTestOffer({ priceUsdc: 100, title: "Expensive2" });
 
-    const filtered = listOffers({ maxPrice: 10 });
+    const filtered = await listOffers({ maxPrice: 10 });
     expect(filtered.every((o) => o.priceUsdc <= 10)).toBe(true);
     expect(filtered.some((o) => o.priceUsdc === 100)).toBe(false);
   });
 
-  it("filters by agentId", () => {
-    createTestOffer({ agentId: "agent-A", title: "From A" });
-    createTestOffer({ agentId: "agent-B", title: "From B" });
+  it("filters by agentId", async () => {
+    await createTestOffer({ agentId: "agent-A", title: "From A" });
+    await createTestOffer({ agentId: "agent-B", title: "From B" });
 
-    const filtered = listOffers({ agentId: "agent-A" });
+    const filtered = await listOffers({ agentId: "agent-A" });
     expect(filtered.every((o) => o.agentId === "agent-A")).toBe(true);
   });
 
-  it("combines multiple filters", () => {
-    createTestOffer({ agentId: "x", priceUsdc: 5, supportedChains: ["base"], title: "match" });
-    createTestOffer({ agentId: "x", priceUsdc: 50, supportedChains: ["base"], title: "too expensive" });
-    createTestOffer({ agentId: "y", priceUsdc: 5, supportedChains: ["base"], title: "wrong agent" });
+  it("combines multiple filters", async () => {
+    await createTestOffer({ agentId: "x", priceUsdc: 5, supportedChains: ["base"], title: "match" });
+    await createTestOffer({ agentId: "x", priceUsdc: 50, supportedChains: ["base"], title: "too expensive" });
+    await createTestOffer({ agentId: "y", priceUsdc: 5, supportedChains: ["base"], title: "wrong agent" });
 
-    const filtered = listOffers({ agentId: "x", maxPrice: 10, chain: "base" });
+    const filtered = await listOffers({ agentId: "x", maxPrice: 10, chain: "base" });
     expect(filtered).toHaveLength(1);
     expect(filtered[0].title).toBe("match");
   });
 
-  it("returns empty array when no offers match filter", () => {
-    createTestOffer({ priceUsdc: 5 });
-    const filtered = listOffers({ minPrice: 999 });
+  it("returns empty array when no offers match filter", async () => {
+    await createTestOffer({ priceUsdc: 5 });
+    const filtered = await listOffers({ minPrice: 999 });
     expect(filtered).toEqual([]);
   });
 
-  it("handles filter with minPrice=0 correctly", () => {
-    createTestOffer({ priceUsdc: 0, title: "Free" });
-    createTestOffer({ priceUsdc: 5, title: "Paid" });
+  it("handles filter with minPrice=0 correctly", async () => {
+    await createTestOffer({ priceUsdc: 0, title: "Free" });
+    await createTestOffer({ priceUsdc: 5, title: "Paid" });
 
-    const filtered = listOffers({ minPrice: 0 });
+    const filtered = await listOffers({ minPrice: 0 });
     expect(filtered.length).toBeGreaterThanOrEqual(2);
   });
 });
 
-describe("removeOffer", () => {
-  it("removes an existing offer", () => {
-    const offer = createTestOffer();
-    expect(removeOffer(offer.id)).toBe(true);
-    expect(getOffer(offer.id)).toBeUndefined();
-    // Remove from tracking since already deleted
-    createdIds = createdIds.filter((id) => id !== offer.id);
+describe("purchases (recordPurchase / isTransactionUsed)", () => {
+  it("records a purchase and isTransactionUsed returns true", async () => {
+    await recordPurchase("offer-1", "tx-abc", "base", "0xpayer", 5, "hash123");
+    expect(await isTransactionUsed("tx-abc")).toBe(true);
   });
 
-  it("returns false when removing non-existent offer", () => {
-    expect(removeOffer("non-existent")).toBe(false);
+  it("returns false for unrecorded txHash", async () => {
+    expect(await isTransactionUsed("tx-unknown")).toBe(false);
   });
 
-  it("removed offer does not appear in list", () => {
-    const offer = createTestOffer({ title: "ToRemove" });
-    removeOffer(offer.id);
-    const offers = listOffers();
-    expect(offers.find((o) => o.id === offer.id)).toBeUndefined();
-    createdIds = createdIds.filter((id) => id !== offer.id);
-  });
-});
-
-describe("purchases (recordPurchase / isPurchased)", () => {
-  it("records a purchase and returns true for isPurchased", () => {
-    recordPurchase("offer-1", "tx-abc");
-    expect(isPurchased("offer-1", "tx-abc")).toBe(true);
+  it("same txHash is detected regardless of which offer used it", async () => {
+    await recordPurchase("offer-A", "tx-shared", "base", "0xpayer", 5, "hash");
+    // txHash-based lookup — cross-offer replay protection
+    expect(await isTransactionUsed("tx-shared")).toBe(true);
   });
 
-  it("returns false for unrecorded purchases", () => {
-    expect(isPurchased("offer-1", "tx-unknown")).toBe(false);
-    expect(isPurchased("unknown-offer", "tx-abc")).toBe(false);
+  it("differentiates different txHashes", async () => {
+    await recordPurchase("offer-X", "tx-1", "base", "0xpayer", 5, "hash");
+    expect(await isTransactionUsed("tx-1")).toBe(true);
+    expect(await isTransactionUsed("tx-2")).toBe(false);
   });
 
-  it("differentiates same txHash across different offers", () => {
-    recordPurchase("offer-A", "tx-shared");
-    expect(isPurchased("offer-A", "tx-shared")).toBe(true);
-    expect(isPurchased("offer-B", "tx-shared")).toBe(false);
-  });
-
-  it("differentiates same offer with different txHashes", () => {
-    recordPurchase("offer-X", "tx-1");
-    expect(isPurchased("offer-X", "tx-1")).toBe(true);
-    expect(isPurchased("offer-X", "tx-2")).toBe(false);
-  });
-
-  it("handles empty strings", () => {
-    recordPurchase("", "");
-    expect(isPurchased("", "")).toBe(true);
-    expect(isPurchased("", "something")).toBe(false);
+  it("handles empty string txHash", async () => {
+    await recordPurchase("", "", "base", "0xpayer", 0, "");
+    expect(await isTransactionUsed("")).toBe(true);
+    expect(await isTransactionUsed("something")).toBe(false);
   });
 });

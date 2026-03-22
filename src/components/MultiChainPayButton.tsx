@@ -6,6 +6,8 @@ import { ChainSelector } from "./ChainSelector";
 import { usePayment } from "@/hooks/usePayment";
 import { useUnlock } from "@/hooks/useUnlock";
 import { formatUsdc, getExplorerUrl } from "@/lib/utils";
+import { useAccount } from "wagmi";
+import { useWallet as useSolanaWallet } from "@solana/wallet-adapter-react";
 
 interface MultiChainPayButtonProps {
   offer: Offer;
@@ -23,6 +25,8 @@ export function MultiChainPayButton({
   );
   const { pay, isPending, result, error: payError } = usePayment();
   const { unlock, isUnlocking, error: unlockError } = useUnlock();
+  const { address: evmAddress } = useAccount();
+  const { publicKey: solanaPublicKey } = useSolanaWallet();
 
   const [configError, setConfigError] = useState<string | null>(null);
 
@@ -48,10 +52,16 @@ export function MultiChainPayButton({
     );
 
     if (paymentResult.confirmed && paymentResult.txHash) {
+      const payerAddress =
+        selectedChain === "base" ? evmAddress :
+        selectedChain === "solana" ? solanaPublicKey?.toBase58() :
+        selectedChain === "icp" ? window.ic?.plug?.principalId :
+        undefined;
       const content = await unlock(
         offer.id,
         paymentResult.txHash,
-        selectedChain
+        selectedChain,
+        payerAddress,
       );
       if (content) {
         onUnlocked(content);

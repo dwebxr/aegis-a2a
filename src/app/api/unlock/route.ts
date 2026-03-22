@@ -5,11 +5,11 @@ import { isValidChain } from "@/lib/constants";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { contentHash, txHash, chain } = body;
+    const { offerId, txHash, chain, payer } = body;
 
-    if (!contentHash || !txHash || !chain) {
+    if (!offerId || !txHash || !chain) {
       return NextResponse.json(
-        { error: "Missing required fields: contentHash, txHash, chain" },
+        { error: "Missing required fields: offerId, txHash, chain" },
         { status: 400 }
       );
     }
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Invalid chain: ${chain}` }, { status: 400 });
     }
 
-    const result = await unlockContent(contentHash, txHash, chain);
+    const result = await unlockContent(offerId, txHash, chain, payer);
 
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 402 });

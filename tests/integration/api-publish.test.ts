@@ -1,14 +1,28 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/agent/publish/route";
 import { NextRequest } from "next/server";
-import { getOffer, removeOffer, _resetForTesting } from "@/services/content/store";
 
-vi.mock("fs", () => ({
-  existsSync: vi.fn().mockReturnValue(false),
-  mkdirSync: vi.fn(),
-  readFileSync: vi.fn().mockReturnValue("[]"),
-  writeFileSync: vi.fn(),
+// In-memory canister state for testing
+let canisterOffers: any[] = [];
+
+const mockActor = {
+  put_offer: vi.fn().mockImplementation(async (offer: any) => {
+    const idx = canisterOffers.findIndex((o: any) => o.id === offer.id);
+    if (idx >= 0) canisterOffers[idx] = offer;
+    else canisterOffers.push(offer);
+  }),
+  get_offers: vi.fn().mockImplementation(async () => [...canisterOffers]),
+  submit_receipt: vi.fn().mockResolvedValue(undefined),
+  get_receipt: vi.fn().mockResolvedValue([]),
+  verify_payment_manual: vi.fn().mockResolvedValue(true),
+  get_a2a_stats: vi.fn().mockResolvedValue({ offerCount: BigInt(0), receiptCount: BigInt(0) }),
+};
+
+vi.mock("@/lib/ic/actor", () => ({
+  getBackendActor: () => mockActor,
 }));
+
+const { getOffer } = await import("@/services/content/store");
 
 const createdIds: string[] = [];
 
@@ -21,7 +35,8 @@ function makeRequest(body: Record<string, unknown>) {
 }
 
 beforeEach(() => {
-  _resetForTesting();
+  vi.clearAllMocks();
+  canisterOffers = [];
   createdIds.length = 0;
 });
 
@@ -53,7 +68,7 @@ describe("POST /api/agent/publish", () => {
     createdIds.push(data.offerId);
 
     // Verify the offer was actually stored
-    const offer = getOffer(data.offerId);
+    const offer = await getOffer(data.offerId);
     expect(offer).toBeDefined();
     expect(offer!.title).toBe("Market Analysis");
     expect(offer!.priceUsdc).toBe(5);
@@ -65,7 +80,7 @@ describe("POST /api/agent/publish", () => {
     const data = await res.json();
     createdIds.push(data.offerId);
 
-    const offer = getOffer(data.offerId);
+    const offer = await getOffer(data.offerId);
     expect(offer!.supportedChains).toEqual(["base", "solana", "icp"]);
   });
 
@@ -74,7 +89,7 @@ describe("POST /api/agent/publish", () => {
     const data = await res.json();
     createdIds.push(data.offerId);
 
-    const offer = getOffer(data.offerId);
+    const offer = await getOffer(data.offerId);
     expect(offer!.supportedChains).toEqual(["base", "icp"]);
   });
 
@@ -85,7 +100,7 @@ describe("POST /api/agent/publish", () => {
     const data = await res.json();
     createdIds.push(data.offerId);
 
-    const offer = getOffer(data.offerId);
+    const offer = await getOffer(data.offerId);
     expect(offer!.supportedChains).toEqual(["base", "icp"]);
   });
 
@@ -104,7 +119,7 @@ describe("POST /api/agent/publish", () => {
     expect(res.status).toBe(201);
     createdIds.push(data.offerId);
 
-    const offer = getOffer(data.offerId);
+    const offer = await getOffer(data.offerId);
     expect(offer!.priceUsdc).toBe(0);
   });
 
@@ -158,7 +173,7 @@ describe("POST /api/agent/publish", () => {
     const data = await res.json();
     createdIds.push(data.offerId);
 
-    const offer = getOffer(data.offerId);
+    const offer = await getOffer(data.offerId);
     expect(offer!.contentHash).toBe("sha256-abc123");
   });
 });

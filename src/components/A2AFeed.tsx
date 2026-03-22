@@ -20,7 +20,7 @@ export function A2AFeed() {
     content: string;
   } | null>(null);
   const [rankedOffers, setRankedOffers] = useState<ScoredOffer[]>([]);
-  const [viewLoading, setViewLoading] = useState(false);
+  const [, setViewLoading] = useState(false);
 
   useEffect(() => {
     if (offers.length === 0) {

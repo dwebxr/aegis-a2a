@@ -1,6 +1,6 @@
 import type { VCLScores, VCLVerdict } from "@/types/offer";
 
-const VCL_MIN_COMPOSITE = Number(process.env.VCL_MIN_COMPOSITE ?? 7.0);
+const VCL_MIN_COMPOSITE = Number(process.env.AEGIS_MIN_COMPOSITE_SCORE ?? 7.0);
 const VCL_SCORE_MIN = 0;
 const VCL_SCORE_MAX = 10;
 

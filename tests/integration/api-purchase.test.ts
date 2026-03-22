@@ -1,13 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { POST } from "@/app/api/agent/purchase/route";
 import { NextRequest } from "next/server";
-import { addOffer, removeOffer, _resetForTesting } from "@/services/content/store";
 
-vi.mock("fs", () => ({
-  existsSync: vi.fn().mockReturnValue(false),
-  mkdirSync: vi.fn(),
-  readFileSync: vi.fn().mockReturnValue("[]"),
-  writeFileSync: vi.fn(),
+// In-memory canister state for testing
+let canisterOffers: any[] = [];
+let canisterReceipts: Map<string, any> = new Map();
+
+const mockActor = {
+  put_offer: vi.fn().mockImplementation(async (offer: any) => {
+    const idx = canisterOffers.findIndex((o: any) => o.id === offer.id);
+    if (idx >= 0) canisterOffers[idx] = offer;
+    else canisterOffers.push(offer);
+  }),
+  get_offers: vi.fn().mockImplementation(async () => [...canisterOffers]),
+  submit_receipt: vi.fn().mockImplementation(async (receipt: any) => {
+    canisterReceipts.set(receipt.txHash, receipt);
+  }),
+  get_receipt: vi.fn().mockImplementation(async (txHash: string) => {
+    const r = canisterReceipts.get(txHash);
+    return r ? [r] : [];
+  }),
+  verify_payment_manual: vi.fn().mockResolvedValue(true),
+  get_a2a_stats: vi.fn().mockResolvedValue({ offerCount: BigInt(0), receiptCount: BigInt(0) }),
+};
+
+vi.mock("@/lib/ic/actor", () => ({
+  getBackendActor: () => mockActor,
 }));
 
 // Mock verification to avoid real RPC calls
@@ -27,6 +45,8 @@ vi.mock("@/lib/constants", async () => {
   };
 });
 
+const { addOffer } = await import("@/services/content/store");
+
 const createdIds: string[] = [];
 
 function makeRequest(body: Record<string, unknown>) {
@@ -37,8 +57,8 @@ function makeRequest(body: Record<string, unknown>) {
   });
 }
 
-function addTestOffer() {
-  const offer = addOffer({
+async function addTestOffer() {
+  const offer = await addOffer({
     agentId: "agent-1",
     title: "Premium Intel",
     description: "desc",
@@ -54,13 +74,17 @@ function addTestOffer() {
 beforeEach(() => {
   mockVerify.mockClear();
   mockVerify.mockResolvedValue({ verified: true });
-  _resetForTesting();
+  vi.clearAllMocks();
+  canisterOffers = [];
+  canisterReceipts = new Map();
+  // Re-apply mockVerify after clearAllMocks
+  mockVerify.mockResolvedValue({ verified: true });
   createdIds.length = 0;
 });
 
 describe("POST /api/agent/purchase", () => {
   it("returns content on successful purchase", async () => {
-    const offer = addTestOffer();
+    const offer = await addTestOffer();
 
     const res = await POST(makeRequest({
       offerId: offer.id,
@@ -74,7 +98,7 @@ describe("POST /api/agent/purchase", () => {
   });
 
   it("returns 402 for failed verification", async () => {
-    const offer = addTestOffer();
+    const offer = await addTestOffer();
     mockVerify.mockResolvedValue({ verified: false, error: "Amount insufficient" });
 
     const res = await POST(makeRequest({
@@ -101,7 +125,7 @@ describe("POST /api/agent/purchase", () => {
   });
 
   it("returns 402 on replay (same txHash)", async () => {
-    const offer = addTestOffer();
+    const offer = await addTestOffer();
 
     const res1 = await POST(makeRequest({
       offerId: offer.id,
@@ -150,7 +174,7 @@ describe("POST /api/agent/purchase", () => {
 
   it("works with all supported chains", async () => {
     for (const chain of ["base", "solana", "icp"]) {
-      const offer = addTestOffer();
+      const offer = await addTestOffer();
       const res = await POST(makeRequest({
         offerId: offer.id,
         txHash: `0x-${chain}-tx`,

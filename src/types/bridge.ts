@@ -73,7 +73,6 @@ export interface SyncState {
   lastSyncAt: number;
   lastBriefingGeneratedAt: string | null;
   totalSynced: number;
-  totalRemoved: number;
   consecutiveFailures: number;
   lastError: string | null;
 }

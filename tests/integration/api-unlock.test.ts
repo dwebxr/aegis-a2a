@@ -1,13 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { POST } from "@/app/api/unlock/route";
 import { NextRequest } from "next/server";
-import { addOffer, removeOffer, _resetForTesting } from "@/services/content/store";
 
-vi.mock("fs", () => ({
-  existsSync: vi.fn().mockReturnValue(false),
-  mkdirSync: vi.fn(),
-  readFileSync: vi.fn().mockReturnValue("[]"),
-  writeFileSync: vi.fn(),
+let canisterOffers: any[] = [];
+let canisterReceipts: Map<string, any> = new Map();
+
+const mockActor = {
+  put_offer: vi.fn().mockImplementation(async (offer: any) => {
+    const idx = canisterOffers.findIndex((o: any) => o.id === offer.id);
+    if (idx >= 0) canisterOffers[idx] = offer;
+    else canisterOffers.push(offer);
+  }),
+  get_offers: vi.fn().mockImplementation(async () => [...canisterOffers]),
+  submit_receipt: vi.fn().mockImplementation(async (receipt: any) => {
+    canisterReceipts.set(receipt.txHash, receipt);
+  }),
+  get_receipt: vi.fn().mockImplementation(async (txHash: string) => {
+    const r = canisterReceipts.get(txHash);
+    return r ? [r] : [];
+  }),
+  verify_payment_manual: vi.fn().mockResolvedValue(true),
+  get_a2a_stats: vi.fn().mockResolvedValue({ offerCount: BigInt(0), receiptCount: BigInt(0) }),
+};
+
+vi.mock("@/lib/ic/actor", () => ({
+  getBackendActor: () => mockActor,
 }));
 
 const mockVerify = vi.fn().mockResolvedValue({ verified: true });
@@ -26,7 +43,7 @@ vi.mock("@/lib/constants", async () => {
   };
 });
 
-const createdIds: string[] = [];
+const { addOffer } = await import("@/services/content/store");
 
 function makeRequest(body: Record<string, unknown>) {
   return new NextRequest("http://localhost/api/unlock", {
@@ -37,15 +54,15 @@ function makeRequest(body: Record<string, unknown>) {
 }
 
 beforeEach(() => {
-  mockVerify.mockClear();
+  vi.clearAllMocks();
+  canisterOffers = [];
+  canisterReceipts = new Map();
   mockVerify.mockResolvedValue({ verified: true });
-  _resetForTesting();
-  createdIds.length = 0;
 });
 
 describe("POST /api/unlock", () => {
-  it("unlocks content using contentHash as offerId", async () => {
-    const offer = addOffer({
+  it("unlocks content with offerId", async () => {
+    const offer = await addOffer({
       agentId: "a",
       title: "T",
       description: "D",
@@ -54,10 +71,9 @@ describe("POST /api/unlock", () => {
       supportedChains: ["base"],
       encryptedContent: "UNLOCKED DATA",
     });
-    createdIds.push(offer.id);
 
     const res = await POST(makeRequest({
-      contentHash: offer.id,
+      offerId: offer.id,
       txHash: "0xunlock-tx",
       chain: "base",
     }));
@@ -67,23 +83,28 @@ describe("POST /api/unlock", () => {
     expect(data.content).toBe("UNLOCKED DATA");
   });
 
-  it("returns 400 for missing fields", async () => {
-    const res = await POST(makeRequest({ contentHash: "x" }));
+  it("returns 400 for missing offerId", async () => {
+    const res = await POST(makeRequest({ txHash: "0x", chain: "base" }));
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for missing txHash", async () => {
+    const res = await POST(makeRequest({ offerId: "x", chain: "base" }));
     expect(res.status).toBe(400);
   });
 
   it("returns 400 for invalid chain", async () => {
     const res = await POST(makeRequest({
-      contentHash: "x",
+      offerId: "x",
       txHash: "0x",
       chain: "invalid",
     }));
     expect(res.status).toBe(400);
   });
 
-  it("returns 402 when content not found", async () => {
+  it("returns 402 when offer not found", async () => {
     const res = await POST(makeRequest({
-      contentHash: "nonexistent",
+      offerId: "nonexistent",
       txHash: "0x",
       chain: "base",
     }));

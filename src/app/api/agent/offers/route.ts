@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listOffers } from "@/services/content/store";
 import { isValidChain } from "@/lib/constants";
+import { log } from "@/lib/logger";
 import type { OfferFilter } from "@/types/offer";
 
 export async function GET(req: NextRequest) {
@@ -33,11 +34,16 @@ export async function GET(req: NextRequest) {
   const agentId = searchParams.get("agentId");
   if (agentId) filter.agentId = agentId;
 
-  const offers = listOffers(filter);
+  try {
+    const offers = await listOffers(filter);
 
-  const publicOffers = offers.map((o) =>
-    Object.fromEntries(Object.entries(o).filter(([k]) => k !== "encryptedContent"))
-  );
+    const publicOffers = offers.map((o) =>
+      Object.fromEntries(Object.entries(o).filter(([k]) => k !== "encryptedContent"))
+    );
 
-  return NextResponse.json({ offers: publicOffers });
+    return NextResponse.json({ offers: publicOffers });
+  } catch (err) {
+    log.error("GET /api/agent/offers failed", { error: String(err) });
+    return NextResponse.json({ error: "Failed to fetch offers" }, { status: 502 });
+  }
 }

@@ -1,28 +1,37 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import {
-  addOffer,
-  listOffersBySource,
-  findOfferBySourceRef,
-  _resetForTesting,
-} from "@/services/content/store";
 import type { ChainType } from "@/types/offer";
 import type { D2ABriefingResponse, BridgeConfig, SourceRef } from "@/types/bridge";
 
-// Mock fs — include default export for `import fs from "fs"` and named exports
-vi.mock("fs", () => {
-  const mock = {
-    existsSync: vi.fn().mockReturnValue(false),
-    mkdirSync: vi.fn(),
-    readFileSync: vi.fn().mockReturnValue("[]"),
-    writeFileSync: vi.fn(),
-    unlinkSync: vi.fn(),
-  };
-  return { ...mock, default: mock };
-});
+// In-memory canister state for testing
+let canisterOffers: any[] = [];
+
+const mockActor = {
+  put_offer: vi.fn().mockImplementation(async (offer: any) => {
+    const idx = canisterOffers.findIndex((o) => o.id === offer.id);
+    if (idx >= 0) canisterOffers[idx] = offer;
+    else canisterOffers.push(offer);
+  }),
+  get_offers: vi.fn().mockImplementation(async () => [...canisterOffers]),
+  submit_receipt: vi.fn().mockResolvedValue(undefined),
+  get_receipt: vi.fn().mockResolvedValue([]),
+  verify_payment_manual: vi.fn().mockResolvedValue(true),
+  get_a2a_stats: vi.fn().mockResolvedValue({ offerCount: BigInt(0), receiptCount: BigInt(0) }),
+};
+
+vi.mock("@/lib/ic/actor", () => ({
+  getBackendActor: () => mockActor,
+}));
 
 // Mock global fetch
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
+
+const {
+  addOffer,
+  findOfferBySourceRef,
+  listOffersBySource,
+  listOffers,
+} = await import("@/services/content/store");
 
 function makeConfig(overrides: Partial<BridgeConfig> = {}): BridgeConfig {
   return {
@@ -70,8 +79,34 @@ function makeBriefingResponse(
   };
 }
 
+/**
+ * Helper: mock a /changes response that indicates changes exist,
+ * so syncFromAegis proceeds to fetch the full briefing.
+ * Needed because sync state persists in the module across tests.
+ */
+function mockChangesWithUpdates() {
+  mockFetch.mockResolvedValueOnce({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      since: "2026-03-20T00:00:00Z",
+      checkedAt: new Date().toISOString(),
+      changes: [{ action: "added", itemHash: "x", title: "x" }],
+    }),
+  });
+}
+
+function mockBriefingFetch(briefing: D2ABriefingResponse) {
+  mockFetch.mockResolvedValueOnce({
+    ok: true,
+    status: 200,
+    json: async () => briefing,
+  });
+}
+
 beforeEach(() => {
-  _resetForTesting();
+  vi.clearAllMocks();
+  canisterOffers = [];
   mockFetch.mockReset();
 });
 
@@ -82,11 +117,7 @@ describe("syncFromAegis", () => {
       { title: "Article B", composite: 9.5 },
     ]);
 
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => briefing,
-    });
+    mockBriefingFetch(briefing);
 
     const { syncFromAegis } = await import("@/services/bridge/sync");
     const config = makeConfig();
@@ -94,9 +125,9 @@ describe("syncFromAegis", () => {
 
     expect(result.created).toBe(2);
     expect(result.updated).toBe(0);
-    expect(result.removed).toBe(0);
+    expect(result.stale).toBe(0);
 
-    const bridged = listOffersBySource("aegis-hontal");
+    const bridged = await listOffersBySource("aegis-hontal");
     expect(bridged).toHaveLength(2);
     expect(bridged.some((o) => o.title === "Article A")).toBe(true);
     expect(bridged.some((o) => o.title === "Article B")).toBe(true);
@@ -105,12 +136,11 @@ describe("syncFromAegis", () => {
   it("updates existing offers when version is newer", async () => {
     // Pre-create a bridged offer
     const ref: SourceRef = { system: "aegis-hontal", externalId: "", version: 1000, syncedAt: Date.now() };
-    // We need to know the externalId — derive it the same way transform does
     const { createHash } = await import("crypto");
     const externalId = createHash("sha256").update("Article A\0https://example.com/article-a").digest("hex");
     ref.externalId = externalId;
 
-    addOffer({
+    await addOffer({
       agentId: "aegis-hontal",
       title: "Article A OLD",
       description: "old desc",
@@ -125,11 +155,9 @@ describe("syncFromAegis", () => {
       "2026-03-22T00:00:00Z", // newer
     );
 
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => briefing,
-    });
+    // After previous successful sync, syncState.lastSyncAt > 0, so /changes is fetched first
+    mockChangesWithUpdates();
+    mockBriefingFetch(briefing);
 
     const { syncFromAegis } = await import("@/services/bridge/sync");
     const result = await syncFromAegis(makeConfig());
@@ -137,14 +165,13 @@ describe("syncFromAegis", () => {
     expect(result.updated).toBe(1);
     expect(result.created).toBe(0);
 
-    const updated = findOfferBySourceRef(externalId);
+    const updated = await findOfferBySourceRef(externalId);
     expect(updated).toBeDefined();
     expect(updated!.title).toBe("Article A");
   });
 
   it("removes stale offers no longer in briefing", async () => {
-    // Pre-create two bridged offers
-    addOffer({
+    await addOffer({
       agentId: "aegis-hontal",
       title: "Will Stay",
       description: "d",
@@ -153,7 +180,7 @@ describe("syncFromAegis", () => {
       supportedChains: ["base"] as ChainType[],
       sourceRef: { system: "aegis-hontal", externalId: "stay-id", version: 1, syncedAt: Date.now() },
     });
-    addOffer({
+    await addOffer({
       agentId: "aegis-hontal",
       title: "Will Be Removed",
       description: "d",
@@ -163,29 +190,23 @@ describe("syncFromAegis", () => {
       sourceRef: { system: "aegis-hontal", externalId: "remove-id", version: 1, syncedAt: Date.now() },
     });
 
-    // Briefing only contains one item that doesn't match either existing externalId
     const briefing = makeBriefingResponse(
       [{ title: "Brand New Item", composite: 8.0 }],
       "2026-03-23T00:00:00Z",
     );
 
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => briefing,
-    });
+    mockChangesWithUpdates();
+    mockBriefingFetch(briefing);
 
     const { syncFromAegis } = await import("@/services/bridge/sync");
     const result = await syncFromAegis(makeConfig());
 
-    expect(result.removed).toBe(2);
+    expect(result.stale).toBe(2);
     expect(result.created).toBe(1);
-    expect(listOffersBySource("aegis-hontal")).toHaveLength(1);
   });
 
   it("does not touch non-bridged offers", async () => {
-    // A regular agent offer
-    addOffer({
+    await addOffer({
       agentId: "openclaw",
       title: "Agent Offer",
       description: "d",
@@ -196,25 +217,20 @@ describe("syncFromAegis", () => {
 
     const briefing = makeBriefingResponse(
       [{ title: "New Briefing", composite: 8.0 }],
+      "2026-03-26T00:00:00Z",
     );
 
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => briefing,
-    });
+    mockChangesWithUpdates();
+    mockBriefingFetch(briefing);
 
     const { syncFromAegis } = await import("@/services/bridge/sync");
     await syncFromAegis(makeConfig());
 
-    // Agent offer should still exist
-    const all = listOffersBySource("aegis-hontal");
+    const all = await listOffersBySource("aegis-hontal");
     expect(all).toHaveLength(1);
     expect(all[0].title).toBe("New Briefing");
 
-    // The openclaw offer is untouched (not sourced from aegis-hontal)
-    const { listOffers } = await import("@/services/content/store");
-    const allOffers = listOffers();
+    const allOffers = await listOffers();
     expect(allOffers.some((o) => o.agentId === "openclaw")).toBe(true);
   });
 
@@ -222,26 +238,24 @@ describe("syncFromAegis", () => {
     const briefing = makeBriefingResponse([
       { title: "High Quality", composite: 9.0 },
       { title: "Low Quality", composite: 5.0 },
-    ]);
+    ], "2026-03-24T00:00:00Z");
 
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => briefing,
-    });
+    mockChangesWithUpdates();
+    mockBriefingFetch(briefing);
 
     const { syncFromAegis } = await import("@/services/bridge/sync");
     const result = await syncFromAegis(makeConfig());
 
     expect(result.created).toBe(1);
-    expect(listOffersBySource("aegis-hontal")).toHaveLength(1);
-    expect(listOffersBySource("aegis-hontal")[0].title).toBe("High Quality");
+    const bridged = await listOffersBySource("aegis-hontal");
+    expect(bridged).toHaveLength(1);
+    expect(bridged[0].title).toBe("High Quality");
   });
 
   it("includes serendipity pick", async () => {
     const briefing = makeBriefingResponse([
       { title: "Regular", composite: 8.0 },
-    ]);
+    ], "2026-03-25T00:00:00Z");
     briefing.serendipityPick = {
       title: "Serendipity",
       content: "Surprise content",
@@ -254,21 +268,20 @@ describe("syncFromAegis", () => {
       briefingScore: 80,
     };
 
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => briefing,
-    });
+    mockChangesWithUpdates();
+    mockBriefingFetch(briefing);
 
     const { syncFromAegis } = await import("@/services/bridge/sync");
     const result = await syncFromAegis(makeConfig());
 
     expect(result.created).toBe(2);
-    const bridged = listOffersBySource("aegis-hontal");
+    const bridged = await listOffersBySource("aegis-hontal");
     expect(bridged.some((o) => o.title === "Serendipity")).toBe(true);
   });
 
   it("throws on 402 payment required when preview also fails", async () => {
+    // /changes first (sync state is dirty from previous tests)
+    mockChangesWithUpdates();
     // First call: 402 on normal briefing
     mockFetch.mockResolvedValueOnce({
       ok: false,
@@ -287,6 +300,7 @@ describe("syncFromAegis", () => {
   });
 
   it("throws on non-ok response", async () => {
+    mockChangesWithUpdates();
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 500,
@@ -312,6 +326,7 @@ describe("runSyncCycle", () => {
   });
 
   it("returns null and logs error on fetch failure", async () => {
+    mockChangesWithUpdates();
     mockFetch.mockRejectedValueOnce(new Error("Network error"));
 
     const { runSyncCycle } = await import("@/services/bridge/sync");

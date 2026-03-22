@@ -1,41 +1,52 @@
 /**
- * Tests that the store actually persists to disk and survives a "restart"
- * (simulated by resetting the in-memory state and reloading).
- * Uses REAL filesystem - no fs mocks.
+ * Tests that the store persists to the canister via the actor.
+ * The store now calls getBackendActor() which we mock with in-memory state.
  */
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
-import fs from "fs";
-import path from "path";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 
-// Set a test-specific data directory BEFORE importing store
-const TEST_DATA_DIR = path.join(process.cwd(), ".aegis-test-data");
-process.env.AEGIS_DATA_DIR = TEST_DATA_DIR;
+// In-memory canister state for testing
+let canisterOffers: any[] = [];
+let canisterReceipts: Map<string, any> = new Map();
 
-// Now import store - it will use our test dir
+const mockActor = {
+  put_offer: vi.fn().mockImplementation(async (offer: any) => {
+    const idx = canisterOffers.findIndex((o: any) => o.id === offer.id);
+    if (idx >= 0) canisterOffers[idx] = offer;
+    else canisterOffers.push(offer);
+  }),
+  get_offers: vi.fn().mockImplementation(async () => [...canisterOffers]),
+  submit_receipt: vi.fn().mockImplementation(async (receipt: any) => {
+    canisterReceipts.set(receipt.txHash, receipt);
+  }),
+  get_receipt: vi.fn().mockImplementation(async (txHash: string) => {
+    const r = canisterReceipts.get(txHash);
+    return r ? [r] : [];
+  }),
+  verify_payment_manual: vi.fn().mockResolvedValue(true),
+  get_a2a_stats: vi.fn().mockResolvedValue({ offerCount: BigInt(0), receiptCount: BigInt(0) }),
+};
+
+vi.mock("@/lib/ic/actor", () => ({
+  getBackendActor: () => mockActor,
+}));
+
 const {
   addOffer,
   getOffer,
   listOffers,
-  isPurchased,
+  isTransactionUsed,
   recordPurchase,
-  _resetForTesting,
 } = await import("@/services/content/store");
 
-function cleanup() {
-  _resetForTesting();
-  if (fs.existsSync(TEST_DATA_DIR)) {
-    fs.rmSync(TEST_DATA_DIR, { recursive: true });
-  }
-}
+beforeEach(() => {
+  vi.clearAllMocks();
+  canisterOffers = [];
+  canisterReceipts = new Map();
+});
 
-beforeEach(cleanup);
-afterAll(cleanup);
-
-describe("Store filesystem persistence", () => {
-  it("creates data directory on first write", () => {
-    expect(fs.existsSync(TEST_DATA_DIR)).toBe(false);
-
-    addOffer({
+describe("Store canister persistence", () => {
+  it("calls put_offer on addOffer", async () => {
+    await addOffer({
       agentId: "test",
       title: "Test",
       description: "d",
@@ -45,32 +56,28 @@ describe("Store filesystem persistence", () => {
       encryptedContent: "secret",
     });
 
-    expect(fs.existsSync(TEST_DATA_DIR)).toBe(true);
-    expect(fs.existsSync(path.join(TEST_DATA_DIR, "offers.json"))).toBe(true);
+    expect(mockActor.put_offer).toHaveBeenCalledTimes(1);
   });
 
-  it("persists offers to disk as valid JSON", () => {
-    const offer = addOffer({
+  it("persists offers via canister actor", async () => {
+    const offer = await addOffer({
       agentId: "agent-1",
       title: "Persisted Offer",
-      description: "should survive restart",
+      description: "should survive via canister",
       priceUsdc: 5,
       contentHash: "hash",
       supportedChains: ["base", "solana"],
       encryptedContent: "secret-data",
     });
 
-    const raw = fs.readFileSync(path.join(TEST_DATA_DIR, "offers.json"), "utf-8");
-    const parsed = JSON.parse(raw);
-
-    expect(parsed).toHaveLength(1);
-    expect(parsed[0].id).toBe(offer.id);
-    expect(parsed[0].title).toBe("Persisted Offer");
-    expect(parsed[0].encryptedContent).toBe("secret-data");
+    // Verify offer is retrievable (through get_offers mock)
+    const retrieved = await getOffer(offer.id);
+    expect(retrieved).toBeDefined();
+    expect(retrieved!.title).toBe("Persisted Offer");
   });
 
-  it("survives a simulated restart (reset + reload from disk)", () => {
-    const offer = addOffer({
+  it("data persists across multiple calls (canister state retained)", async () => {
+    await addOffer({
       agentId: "agent-1",
       title: "Survive Restart",
       description: "d",
@@ -79,37 +86,24 @@ describe("Store filesystem persistence", () => {
       supportedChains: ["base"],
       encryptedContent: "important",
     });
-    const offerId = offer.id;
 
-    // Simulate restart: clear in-memory state without touching disk
-    _resetForTesting();
-
-    // After reset, the store should reload from disk on next access
-    const reloaded = getOffer(offerId);
-    expect(reloaded).toBeDefined();
-    expect(reloaded!.title).toBe("Survive Restart");
-    expect(reloaded!.encryptedContent).toBe("important");
+    // The canister state is retained in canisterOffers array
+    const offers = await listOffers();
+    expect(offers).toHaveLength(1);
+    expect(offers[0].title).toBe("Survive Restart");
   });
 
-  it("persists purchases across restarts", () => {
-    recordPurchase("offer-1", "tx-abc");
-    expect(isPurchased("offer-1", "tx-abc")).toBe(true);
-
-    // Simulate restart
-    _resetForTesting();
-
-    // Should reload from disk
-    expect(isPurchased("offer-1", "tx-abc")).toBe(true);
+  it("persists purchases via canister receipts", async () => {
+    await recordPurchase("offer-1", "tx-abc", "base", "0xpayer", 5, "hash123");
+    expect(await isTransactionUsed("tx-abc")).toBe(true);
   });
 
-  it("persists multiple offers correctly", () => {
-    addOffer({ agentId: "a", title: "A", description: "d", priceUsdc: 1, contentHash: "", supportedChains: ["base"] });
-    addOffer({ agentId: "b", title: "B", description: "d", priceUsdc: 2, contentHash: "", supportedChains: ["solana"] });
-    addOffer({ agentId: "c", title: "C", description: "d", priceUsdc: 3, contentHash: "", supportedChains: ["icp"] });
+  it("persists multiple offers correctly", async () => {
+    await addOffer({ agentId: "a", title: "A", description: "d", priceUsdc: 1, contentHash: "", supportedChains: ["base"] });
+    await addOffer({ agentId: "b", title: "B", description: "d", priceUsdc: 2, contentHash: "", supportedChains: ["solana"] });
+    await addOffer({ agentId: "c", title: "C", description: "d", priceUsdc: 3, contentHash: "", supportedChains: ["icp"] });
 
-    _resetForTesting();
-
-    const offers = listOffers();
+    const offers = await listOffers();
     expect(offers).toHaveLength(3);
     expect(offers.map((o) => o.title).sort()).toEqual(["A", "B", "C"]);
   });

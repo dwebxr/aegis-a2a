@@ -7,16 +7,33 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { POST as publishPost } from "@/app/api/agent/publish/route";
 import { POST as purchasePost } from "@/app/api/agent/purchase/route";
 import { NextRequest } from "next/server";
-import { removeOffer, _resetForTesting } from "@/services/content/store";
 import { USDC_ADDRESSES, usdcToUnits } from "@/lib/constants";
 import { keccak256, toHex, pad, numberToHex } from "viem";
 
-// Mock filesystem for store persistence during tests
-vi.mock("fs", () => ({
-  existsSync: vi.fn().mockReturnValue(false),
-  mkdirSync: vi.fn(),
-  readFileSync: vi.fn().mockReturnValue("[]"),
-  writeFileSync: vi.fn(),
+// In-memory canister state for testing
+let canisterOffers: any[] = [];
+let canisterReceipts: Map<string, any> = new Map();
+
+const mockActor = {
+  put_offer: vi.fn().mockImplementation(async (offer: any) => {
+    const idx = canisterOffers.findIndex((o: any) => o.id === offer.id);
+    if (idx >= 0) canisterOffers[idx] = offer;
+    else canisterOffers.push(offer);
+  }),
+  get_offers: vi.fn().mockImplementation(async () => [...canisterOffers]),
+  submit_receipt: vi.fn().mockImplementation(async (receipt: any) => {
+    canisterReceipts.set(receipt.txHash, receipt);
+  }),
+  get_receipt: vi.fn().mockImplementation(async (txHash: string) => {
+    const r = canisterReceipts.get(txHash);
+    return r ? [r] : [];
+  }),
+  verify_payment_manual: vi.fn().mockResolvedValue(true),
+  get_a2a_stats: vi.fn().mockResolvedValue({ offerCount: BigInt(0), receiptCount: BigInt(0) }),
+};
+
+vi.mock("@/lib/ic/actor", () => ({
+  getBackendActor: () => mockActor,
 }));
 
 // Mock ONLY the RPC client - everything else runs real code
@@ -95,7 +112,9 @@ const qualityVcl = {
 };
 
 beforeEach(() => {
-  _resetForTesting();
+  vi.clearAllMocks();
+  canisterOffers = [];
+  canisterReceipts = new Map();
   mockReceipt = null;
 });
 

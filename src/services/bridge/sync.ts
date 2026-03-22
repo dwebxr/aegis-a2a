@@ -6,52 +6,22 @@ import type {
   ChangesResponse,
 } from "@/types/bridge";
 import type { Offer } from "@/types/offer";
-import { addOffer, updateOffer, removeOffer, listOffersBySource } from "@/services/content/store";
+import { addOffer, updateOffer, listOffersBySource } from "@/services/content/store";
 import { transformBriefingItems } from "./transform";
 import { fetchOgImage } from "@/lib/ogp";
 import { log } from "@/lib/logger";
-import fs from "fs";
-import path from "path";
 
-const DATA_DIR = process.env.AEGIS_DATA_DIR || path.join(process.cwd(), ".aegis-data");
-const SYNC_STATE_FILE = path.join(DATA_DIR, "bridge-sync-state.json");
-
-function ensureDataDir(): void {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
-
-const DEFAULT_SYNC_STATE: SyncState = {
+// ── In-memory sync state (stateless across restarts → full re-sync on boot) ──
+let syncState: SyncState = {
   lastSyncAt: 0,
   lastBriefingGeneratedAt: null,
   totalSynced: 0,
-  totalRemoved: 0,
   consecutiveFailures: 0,
   lastError: null,
 };
 
-function loadSyncState(): SyncState {
-  if (!fs.existsSync(SYNC_STATE_FILE)) return { ...DEFAULT_SYNC_STATE };
-  try {
-    const raw = JSON.parse(fs.readFileSync(SYNC_STATE_FILE, "utf-8"));
-    if (typeof raw !== "object" || raw === null || typeof raw.lastSyncAt !== "number") {
-      return { ...DEFAULT_SYNC_STATE };
-    }
-    return raw as SyncState;
-  } catch {
-    log.warn("Corrupt bridge sync state file, resetting", { path: SYNC_STATE_FILE });
-    return { ...DEFAULT_SYNC_STATE };
-  }
-}
-
-function saveSyncState(state: SyncState): void {
-  ensureDataDir();
-  fs.writeFileSync(SYNC_STATE_FILE, JSON.stringify(state, null, 2));
-}
-
 export function getSyncState(): SyncState {
-  return loadSyncState();
+  return { ...syncState };
 }
 
 export async function fetchAegisHealth(config: BridgeConfig): Promise<AegisD2AHealth> {
@@ -76,7 +46,8 @@ async function fetchAegisChanges(
       signal: AbortSignal.timeout(10_000),
       headers: { Accept: "application/json" },
     });
-  } catch {
+  } catch (err) {
+    log.debug("Failed to check /changes endpoint", { error: String(err) });
     return null;
   }
   if (!res.ok) return null;
@@ -88,7 +59,6 @@ async function fetchAegisBriefing(
   options?: { preview?: boolean; since?: string },
 ): Promise<D2ABriefingResponse> {
   const params = new URLSearchParams();
-  // principal is required for individual briefings with full content
   if (config.principal) params.set("principal", config.principal);
   if (options?.preview) params.set("preview", "true");
   if (options?.since) params.set("since", options.since);
@@ -101,7 +71,6 @@ async function fetchAegisBriefing(
     headers: { Accept: "application/json" },
   });
 
-  // x402 paywall — auto-retry with free-tier preview
   if (res.status === 402 && !options?.preview) {
     log.info("Aegis briefing paywalled, retrying with preview=true");
     return fetchAegisBriefing(config, { ...options, preview: true });
@@ -118,19 +87,14 @@ async function fetchAegisBriefing(
   }
 
   const body = await res.json();
+  if (!body || typeof body !== "object") throw new Error("Aegis briefing response has unexpected shape");
 
-  // Individual briefing: has items[] with full content
-  if (typeof body === "object" && body !== null && Array.isArray(body.items) && typeof body.generatedAt === "string") {
+  if (Array.isArray(body.items) && typeof body.generatedAt === "string") {
     return body as D2ABriefingResponse;
   }
 
-  // Global briefing (no principal): extract items from contributors' topItems
-  // These only have title/topics/briefingScore/verdict — no content or scores
-  if (typeof body === "object" && body !== null && Array.isArray(body.contributors)) {
-    log.warn("Bridge received global briefing (no principal configured). Items lack full content.");
-    throw new Error(
-      "AEGIS_BRIDGE_PRINCIPAL is required. Without it, Aegis returns a global summary without item content.",
-    );
+  if (Array.isArray(body.contributors)) {
+    throw new Error("AEGIS_BRIDGE_PRINCIPAL is required. Without it, Aegis returns a global summary without item content.");
   }
 
   throw new Error("Aegis briefing response has unexpected shape");
@@ -139,17 +103,16 @@ async function fetchAegisBriefing(
 export interface SyncResult {
   created: number;
   updated: number;
-  removed: number;
   skipped: number;
+  stale: number;
 }
 
 export async function syncFromAegis(config: BridgeConfig): Promise<SyncResult> {
-  const state = loadSyncState();
-  const result: SyncResult = { created: 0, updated: 0, removed: 0, skipped: 0 };
+  const result: SyncResult = { created: 0, updated: 0, skipped: 0, stale: 0 };
 
   // Check /changes first (free, no x402) to skip unnecessary briefing fetches
-  if (state.lastSyncAt > 0 && state.consecutiveFailures === 0) {
-    const sinceIso = new Date(state.lastSyncAt).toISOString();
+  if (syncState.lastSyncAt > 0 && syncState.consecutiveFailures === 0) {
+    const sinceIso = new Date(syncState.lastSyncAt).toISOString();
     const changes = await fetchAegisChanges(config, sinceIso);
     if (changes && changes.changes.length === 0) {
       log.debug("Bridge sync skipped: no changes since last sync", { since: sinceIso });
@@ -158,10 +121,10 @@ export async function syncFromAegis(config: BridgeConfig): Promise<SyncResult> {
   }
 
   const briefing = await fetchAegisBriefing(config, {
-    since: state.lastBriefingGeneratedAt ?? undefined,
+    since: syncState.lastBriefingGeneratedAt ?? undefined,
   });
 
-  if (state.lastBriefingGeneratedAt === briefing.generatedAt && state.consecutiveFailures === 0) {
+  if (syncState.lastBriefingGeneratedAt === briefing.generatedAt && syncState.consecutiveFailures === 0) {
     return result;
   }
 
@@ -172,8 +135,9 @@ export async function syncFromAegis(config: BridgeConfig): Promise<SyncResult> {
   const version = new Date(briefing.generatedAt).getTime();
   const incomingOffers = transformBriefingItems(allItems, config, version);
 
+  const existingOffers = await listOffersBySource("aegis-hontal");
   const existingByExternalId = new Map<string, Offer>();
-  for (const offer of listOffersBySource("aegis-hontal")) {
+  for (const offer of existingOffers) {
     if (offer.sourceRef) {
       existingByExternalId.set(offer.sourceRef.externalId, offer);
     }
@@ -190,7 +154,6 @@ export async function syncFromAegis(config: BridgeConfig): Promise<SyncResult> {
     }
   }
 
-  // Wait for all OGP fetches (with individual error handling above)
   const ogpResults = new Map<string, string | undefined>();
   for (const [externalId, promise] of Array.from(ogpPromises.entries())) {
     ogpResults.set(externalId, await promise);
@@ -199,15 +162,14 @@ export async function syncFromAegis(config: BridgeConfig): Promise<SyncResult> {
   for (const [externalId, offerData] of Array.from(incomingOffers.entries())) {
     const existing = existingByExternalId.get(externalId);
 
-    // Apply OGP image if content didn't have one
     const imageUrl = offerData.imageUrl || ogpResults.get(externalId);
     const offerWithImage = imageUrl ? { ...offerData, imageUrl } : offerData;
 
     if (!existing) {
-      addOffer(offerWithImage);
+      await addOffer(offerWithImage);
       result.created++;
     } else if (existing.sourceRef && existing.sourceRef.version < version) {
-      updateOffer(existing.id, {
+      await updateOffer(existing.id, {
         title: offerWithImage.title,
         description: offerWithImage.description,
         priceUsdc: offerWithImage.priceUsdc,
@@ -228,19 +190,22 @@ export async function syncFromAegis(config: BridgeConfig): Promise<SyncResult> {
     existingByExternalId.delete(externalId);
   }
 
-  for (const staleOffer of Array.from(existingByExternalId.values())) {
-    removeOffer(staleOffer.id);
-    result.removed++;
+  // Canister has no delete API — stale offers remain and are still served
+  result.stale = existingByExternalId.size;
+  if (result.stale > 0) {
+    log.warn("Stale bridged offers (no canister delete)", {
+      count: result.stale,
+      ids: Array.from(existingByExternalId.keys()),
+    });
   }
 
-  saveSyncState({
+  syncState = {
     lastSyncAt: Date.now(),
     lastBriefingGeneratedAt: briefing.generatedAt,
-    totalSynced: state.totalSynced + result.created + result.updated,
-    totalRemoved: state.totalRemoved + result.removed,
+    totalSynced: syncState.totalSynced + result.created + result.updated,
     consecutiveFailures: 0,
     lastError: null,
-  });
+  };
 
   log.info("Bridge sync completed", { ...result, briefingItems: allItems.length });
 
@@ -250,27 +215,19 @@ export async function syncFromAegis(config: BridgeConfig): Promise<SyncResult> {
 export async function runSyncCycle(config: BridgeConfig): Promise<SyncResult | null> {
   if (!config.enabled || !config.aegisUrl) return null;
 
-  const state = loadSyncState();
-
   try {
     return await syncFromAegis(config);
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    log.error("Bridge sync failed", { error: errorMsg, attempt: state.consecutiveFailures + 1 });
+    log.error("Bridge sync failed", { error: errorMsg, attempt: syncState.consecutiveFailures + 1 });
 
-    saveSyncState({
-      ...state,
-      consecutiveFailures: state.consecutiveFailures + 1,
+    syncState = {
+      ...syncState,
+      consecutiveFailures: syncState.consecutiveFailures + 1,
       lastError: errorMsg,
       lastSyncAt: Date.now(),
-    });
+    };
 
     return null;
-  }
-}
-
-export function _resetSyncStateForTesting(): void {
-  if (fs.existsSync(SYNC_STATE_FILE)) {
-    fs.unlinkSync(SYNC_STATE_FILE);
   }
 }

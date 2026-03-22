@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { offerId, txHash, chain } = body;
+    const { offerId, txHash, chain, payer } = body;
 
     if (!offerId || !txHash || !chain) {
       return NextResponse.json(
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Invalid chain: ${chain}` }, { status: 400 });
     }
 
-    const result = await unlockContent(offerId, txHash, chain);
+    const result = await unlockContent(offerId, txHash, chain, payer);
 
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 402 });

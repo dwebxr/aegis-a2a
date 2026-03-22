@@ -1,20 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { _resetForTesting, addOffer } from "@/services/content/store";
 import type { ChainType } from "@/types/offer";
 
-vi.mock("fs", () => {
-  const mock = {
-    existsSync: vi.fn().mockReturnValue(false),
-    mkdirSync: vi.fn(),
-    readFileSync: vi.fn().mockReturnValue("[]"),
-    writeFileSync: vi.fn(),
-    unlinkSync: vi.fn(),
-  };
-  return { ...mock, default: mock };
-});
+// In-memory canister state for testing
+let canisterOffers: any[] = [];
+
+const mockActor = {
+  put_offer: vi.fn().mockImplementation(async (offer: any) => {
+    const idx = canisterOffers.findIndex((o: any) => o.id === offer.id);
+    if (idx >= 0) canisterOffers[idx] = offer;
+    else canisterOffers.push(offer);
+  }),
+  get_offers: vi.fn().mockImplementation(async () => [...canisterOffers]),
+  submit_receipt: vi.fn().mockResolvedValue(undefined),
+  get_receipt: vi.fn().mockResolvedValue([]),
+  verify_payment_manual: vi.fn().mockResolvedValue(true),
+  get_a2a_stats: vi.fn().mockResolvedValue({ offerCount: BigInt(0), receiptCount: BigInt(0) }),
+};
+
+vi.mock("@/lib/ic/actor", () => ({
+  getBackendActor: () => mockActor,
+}));
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
+
+const { addOffer } = await import("@/services/content/store");
 
 function makeReq(url: string, method = "GET") {
   const { NextRequest } = require("next/server");
@@ -22,7 +32,8 @@ function makeReq(url: string, method = "GET") {
 }
 
 beforeEach(() => {
-  _resetForTesting();
+  vi.clearAllMocks();
+  canisterOffers = [];
   mockFetch.mockReset();
   delete process.env.AEGIS_BRIDGE_ENABLED;
   delete process.env.AEGIS_HONTAL_URL;
@@ -44,7 +55,7 @@ describe("GET /api/bridge/status", () => {
     process.env.AEGIS_BRIDGE_ENABLED = "true";
     process.env.AEGIS_HONTAL_URL = "https://aegis.dwebxr.xyz";
 
-    addOffer({
+    await addOffer({
       agentId: "aegis-hontal",
       title: "Bridged",
       description: "d",

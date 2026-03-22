@@ -1,12 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { GET } from "@/app/api/health/route";
-import { _resetForTesting } from "@/services/content/store";
 
-vi.mock("fs", () => ({
-  existsSync: vi.fn().mockReturnValue(false),
-  mkdirSync: vi.fn(),
-  readFileSync: vi.fn().mockReturnValue("[]"),
-  writeFileSync: vi.fn(),
+// In-memory canister state for testing
+let canisterOffers: any[] = [];
+
+const mockActor = {
+  put_offer: vi.fn().mockImplementation(async (offer: any) => {
+    const idx = canisterOffers.findIndex((o: any) => o.id === offer.id);
+    if (idx >= 0) canisterOffers[idx] = offer;
+    else canisterOffers.push(offer);
+  }),
+  get_offers: vi.fn().mockImplementation(async () => [...canisterOffers]),
+  submit_receipt: vi.fn().mockResolvedValue(undefined),
+  get_receipt: vi.fn().mockResolvedValue([]),
+  verify_payment_manual: vi.fn().mockResolvedValue(true),
+  get_a2a_stats: vi.fn().mockResolvedValue({ offerCount: BigInt(0), receiptCount: BigInt(0) }),
+};
+
+vi.mock("@/lib/ic/actor", () => ({
+  getBackendActor: () => mockActor,
 }));
 
 vi.mock("@/lib/constants", async () => {
@@ -21,7 +33,8 @@ vi.mock("@/lib/constants", async () => {
 });
 
 beforeEach(() => {
-  _resetForTesting();
+  vi.clearAllMocks();
+  canisterOffers = [];
 });
 
 describe("GET /api/health", () => {
@@ -47,7 +60,7 @@ describe("GET /api/health", () => {
 
   it("includes offer count from store", async () => {
     const { addOffer } = await import("@/services/content/store");
-    addOffer({
+    await addOffer({
       agentId: "a",
       title: "T",
       description: "D",

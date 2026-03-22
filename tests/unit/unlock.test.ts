@@ -1,14 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { unlockContent } from "@/services/content/unlock";
-import { addOffer, removeOffer, _resetForTesting } from "@/services/content/store";
 import type { ChainType } from "@/types/offer";
 
-// Mock fs for store persistence
-vi.mock("fs", () => ({
-  existsSync: vi.fn().mockReturnValue(false),
-  mkdirSync: vi.fn(),
-  readFileSync: vi.fn().mockReturnValue("[]"),
-  writeFileSync: vi.fn(),
+// In-memory canister state for testing
+let canisterOffers: any[] = [];
+let canisterReceipts: Map<string, any> = new Map();
+
+const mockActor = {
+  put_offer: vi.fn().mockImplementation(async (offer: any) => {
+    const idx = canisterOffers.findIndex((o) => o.id === offer.id);
+    if (idx >= 0) canisterOffers[idx] = offer;
+    else canisterOffers.push(offer);
+  }),
+  get_offers: vi.fn().mockImplementation(async () => [...canisterOffers]),
+  submit_receipt: vi.fn().mockImplementation(async (receipt: any) => {
+    canisterReceipts.set(receipt.txHash, receipt);
+  }),
+  get_receipt: vi.fn().mockImplementation(async (txHash: string) => {
+    const r = canisterReceipts.get(txHash);
+    return r ? [r] : [];
+  }),
+  verify_payment_manual: vi.fn().mockResolvedValue(true),
+  get_a2a_stats: vi.fn().mockResolvedValue({ offerCount: BigInt(0), receiptCount: BigInt(0) }),
+};
+
+vi.mock("@/lib/ic/actor", () => ({
+  getBackendActor: () => mockActor,
 }));
 
 // Mock the verification service
@@ -35,14 +51,17 @@ vi.mock("@/lib/constants", async () => {
 const { verify } = await import("@/services/verification");
 const mockVerify = vi.mocked(verify);
 
+const { unlockContent } = await import("@/services/content/unlock");
+const { addOffer } = await import("@/services/content/store");
+
 let testOfferId: string;
 
-function createOffer(overrides: Partial<{
+async function createOffer(overrides: Partial<{
   supportedChains: ChainType[];
   priceUsdc: number;
   encryptedContent: string;
 }> = {}) {
-  const offer = addOffer({
+  const offer = await addOffer({
     agentId: "agent-test",
     title: "Test Offer",
     description: "Test description",
@@ -58,14 +77,15 @@ function createOffer(overrides: Partial<{
 
 beforeEach(() => {
   vi.clearAllMocks();
-  _resetForTesting();
+  canisterOffers = [];
+  canisterReceipts = new Map();
   mockVerify.mockResolvedValue({ verified: true });
 });
 
 describe("unlockContent", () => {
   describe("happy path", () => {
     it("unlocks content after successful payment verification", async () => {
-      const offer = createOffer();
+      const offer = await createOffer();
 
       const result = await unlockContent(offer.id, "0xtx123", "base");
       expect(result.success).toBe(true);
@@ -74,7 +94,7 @@ describe("unlockContent", () => {
     });
 
     it("passes correct verification params", async () => {
-      const offer = createOffer({ priceUsdc: 25 });
+      const offer = await createOffer({ priceUsdc: 25 });
 
       await unlockContent(offer.id, "0xtx456", "base");
 
@@ -88,10 +108,9 @@ describe("unlockContent", () => {
 
     it("works with each supported chain", async () => {
       for (const chain of ["base", "solana", "icp"] as ChainType[]) {
-        const offer = createOffer();
+        const offer = await createOffer();
         const result = await unlockContent(offer.id, `tx-${chain}`, chain);
         expect(result.success).toBe(true);
-        removeOffer(offer.id);
       }
     });
   });
@@ -104,7 +123,7 @@ describe("unlockContent", () => {
     });
 
     it("fails when chain is not supported by offer", async () => {
-      const offer = createOffer({ supportedChains: ["base"] });
+      const offer = await createOffer({ supportedChains: ["base"] });
 
       const result = await unlockContent(offer.id, "0xtx", "solana");
       expect(result.success).toBe(false);
@@ -115,7 +134,7 @@ describe("unlockContent", () => {
 
   describe("replay protection", () => {
     it("prevents using the same txHash twice for the same offer", async () => {
-      const offer = createOffer();
+      const offer = await createOffer();
 
       const result1 = await unlockContent(offer.id, "0xtx-replay", "base");
       expect(result1.success).toBe(true);
@@ -125,21 +144,8 @@ describe("unlockContent", () => {
       expect(result2.error).toBe("Transaction already used");
     });
 
-    it("allows same txHash for different offers", async () => {
-      const offer1 = createOffer();
-      const offer2 = createOffer();
-
-      const result1 = await unlockContent(offer1.id, "0xtx-shared", "base");
-      expect(result1.success).toBe(true);
-
-      const result2 = await unlockContent(offer2.id, "0xtx-shared", "base");
-      expect(result2.success).toBe(true);
-
-      removeOffer(offer2.id);
-    });
-
     it("allows different txHash for same offer", async () => {
-      const offer = createOffer();
+      const offer = await createOffer();
 
       const result1 = await unlockContent(offer.id, "0xtx-first", "base");
       expect(result1.success).toBe(true);
@@ -151,7 +157,7 @@ describe("unlockContent", () => {
 
   describe("verification failure", () => {
     it("fails when payment verification fails", async () => {
-      const offer = createOffer();
+      const offer = await createOffer();
       mockVerify.mockResolvedValue({
         verified: false,
         error: "Amount insufficient",
@@ -164,7 +170,7 @@ describe("unlockContent", () => {
     });
 
     it("does not record purchase on verification failure", async () => {
-      const offer = createOffer();
+      const offer = await createOffer();
       mockVerify.mockResolvedValue({ verified: false, error: "bad" });
 
       await unlockContent(offer.id, "0xtx-fail", "base");
@@ -178,7 +184,7 @@ describe("unlockContent", () => {
 
   describe("content handling", () => {
     it("returns 'Content unavailable' when no encrypted content", async () => {
-      const offer = createOffer({ encryptedContent: undefined as any });
+      const offer = await createOffer({ encryptedContent: undefined as any });
 
       const result = await unlockContent(offer.id, "0xtx-no-content", "base");
       expect(result.success).toBe(true);
@@ -186,7 +192,7 @@ describe("unlockContent", () => {
     });
 
     it("returns empty string content if set", async () => {
-      const offer = createOffer({ encryptedContent: "" });
+      const offer = await createOffer({ encryptedContent: "" });
 
       const result = await unlockContent(offer.id, "0xtx-empty", "base");
       expect(result.success).toBe(true);

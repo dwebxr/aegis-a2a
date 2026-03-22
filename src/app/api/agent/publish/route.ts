@@ -58,6 +58,8 @@ export async function POST(req: NextRequest) {
   }
 
   // VCL gate: paid offers require VCL scores and must pass quality threshold
+  let resolvedVclScores = vclScores ? validateVCLScores(vclScores).scores : undefined;
+
   if (priceUsdc > 0) {
     const validation = validateVCLScores(vclScores);
     if (!validation.valid) {
@@ -69,23 +71,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: threshold.reason }, { status: 403 });
     }
 
-    const offer = addOffer({
-      agentId: agentId as string,
-      title: title as string,
-      description: description as string,
-      priceUsdc: priceUsdc as number,
-      contentHash: (contentHash as string) || "",
-      supportedChains: chains,
-      encryptedContent: content as string,
-      vclScores: validation.scores,
-      ...optionalMeta,
-    });
-
-    return NextResponse.json({ offerId: offer.id }, { status: 201 });
+    resolvedVclScores = validation.scores;
   }
 
-  // Free offers: no VCL requirement
-  const offer = addOffer({
+  const offer = await addOffer({
     agentId: agentId as string,
     title: title as string,
     description: description as string,
@@ -93,7 +82,7 @@ export async function POST(req: NextRequest) {
     contentHash: (contentHash as string) || "",
     supportedChains: chains,
     encryptedContent: content as string,
-    vclScores: vclScores ? validateVCLScores(vclScores).scores : undefined,
+    vclScores: resolvedVclScores,
     ...optionalMeta,
   });
 

@@ -1,7 +1,7 @@
 import type { ChainType } from "@/types/offer";
 import { verify } from "@/services/verification";
 import { getRecipientAddress } from "@/lib/constants";
-import { getOffer, isPurchased, recordPurchase } from "./store";
+import { getOffer, isTransactionUsed, recordPurchase } from "./store";
 
 export interface UnlockResult {
   success: boolean;
@@ -12,9 +12,10 @@ export interface UnlockResult {
 export async function unlockContent(
   offerId: string,
   txHash: string,
-  chain: ChainType
+  chain: ChainType,
+  payer?: string,
 ): Promise<UnlockResult> {
-  const offer = getOffer(offerId);
+  const offer = await getOffer(offerId);
   if (!offer) {
     return { success: false, error: "Offer not found" };
   }
@@ -23,7 +24,7 @@ export async function unlockContent(
     return { success: false, error: `Offer does not support chain: ${chain}` };
   }
 
-  if (isPurchased(offerId, txHash)) {
+  if (await isTransactionUsed(txHash)) {
     return { success: false, error: "Transaction already used" };
   }
 
@@ -43,7 +44,14 @@ export async function unlockContent(
     return { success: false, error: `Payment verification failed: ${verification.error}` };
   }
 
-  recordPurchase(offerId, txHash);
+  await recordPurchase(
+    offerId,
+    txHash,
+    chain,
+    payer || "anonymous",
+    offer.priceUsdc,
+    offer.contentHash,
+  );
 
   return {
     success: true,

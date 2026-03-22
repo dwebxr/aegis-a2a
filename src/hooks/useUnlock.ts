@@ -9,7 +9,7 @@ export function useUnlock() {
   const [error, setError] = useState<string | null>(null);
 
   const unlock = useCallback(
-    async (offerId: string, txHash: string, chain: ChainType) => {
+    async (offerId: string, txHash: string, chain: ChainType, payer?: string) => {
       setIsUnlocking(true);
       setError(null);
       setContent(null);
@@ -18,7 +18,7 @@ export function useUnlock() {
         const res = await fetch("/api/agent/purchase", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ offerId, txHash, chain }),
+          body: JSON.stringify({ offerId, txHash, chain, payer }),
         });
 
         const data = await res.json();
