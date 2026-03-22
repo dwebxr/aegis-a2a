@@ -10,181 +10,152 @@ interface OfferCardProps {
   onView?: (offer: Offer) => void;
 }
 
+// Derive a stable hue from topic string for the placeholder gradient
+function topicHue(topic: string): number {
+  let h = 0;
+  for (let i = 0; i < topic.length; i++) h = (h * 31 + topic.charCodeAt(i)) & 0xfff;
+  return h % 360;
+}
+
 export function OfferCard({ offer, onBuy, onView }: OfferCardProps) {
   const isFree = offer.priceUsdc === 0;
   const resonanceScore =
     "resonanceScore" in offer ? offer.resonanceScore : null;
   const isBridged = !!offer.sourceRef;
   const vcl = offer.vclScores;
+  const primaryTopic = offer.topics?.[0];
+  const hue = primaryTopic ? topicHue(primaryTopic) : 220;
+
+  const badges = (
+    <div className="flex items-center justify-between">
+      <div className="flex gap-1.5">
+        {isBridged && (
+          <span className="text-[10px] bg-indigo-900/70 backdrop-blur-sm text-indigo-300 px-2 py-0.5 rounded-md">Bridge</span>
+        )}
+        {vcl && (
+          <span className="text-[10px] bg-purple-900/70 backdrop-blur-sm text-purple-300 px-2 py-0.5 rounded-md">VCL {vcl.composite.toFixed(1)}</span>
+        )}
+      </div>
+      {resonanceScore !== null && (
+        <span className={`text-[10px] backdrop-blur-sm px-2 py-0.5 rounded-md ${
+          resonanceScore >= 70 ? "bg-green-900/70 text-green-400" : resonanceScore >= 40 ? "bg-yellow-900/70 text-yellow-400" : "bg-gray-800/70 text-gray-500"
+        }`}>{resonanceScore}%</span>
+      )}
+    </div>
+  );
 
   return (
     <div className="group bg-gray-900/60 border border-gray-800/50 rounded-2xl overflow-hidden hover:bg-gray-900/80 hover:border-gray-700/60 transition-all duration-300 flex flex-col">
-      {/* Image */}
-      {offer.imageUrl && (
-        <div className="relative w-full h-44 bg-gray-800 overflow-hidden">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={offer.imageUrl}
-            alt={offer.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-gray-900/80 via-transparent to-transparent" />
-          {/* Floating badges on image */}
-          <div className="absolute top-3 left-3 right-3 flex items-center justify-between">
-            <div className="flex gap-1.5">
-              {isBridged && (
-                <span className="text-[10px] bg-indigo-900/70 backdrop-blur-sm text-indigo-300 px-2 py-0.5 rounded-md">
-                  Bridge
-                </span>
-              )}
-              {vcl && (
-                <span className="text-[10px] bg-purple-900/70 backdrop-blur-sm text-purple-300 px-2 py-0.5 rounded-md">
-                  VCL {vcl.composite.toFixed(1)}
-                </span>
-              )}
+      {/* Visual header: image or gradient placeholder */}
+      <div className="relative w-full h-32 overflow-hidden">
+        {offer.imageUrl ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={offer.imageUrl}
+              alt={offer.title}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-gray-900/20 to-transparent" />
+          </>
+        ) : (
+          <div
+            className="w-full h-full"
+            style={{ background: `linear-gradient(135deg, hsl(${hue} 40% 12%) 0%, hsl(${(hue + 40) % 360} 30% 8%) 100%)` }}
+          >
+            <div className="absolute inset-0 flex items-center justify-center opacity-[0.07]">
+              <span className="text-6xl font-bold text-white select-none">{(primaryTopic || offer.title[0] || "A").charAt(0).toUpperCase()}</span>
             </div>
-            {resonanceScore !== null && (
-              <span
-                className={`text-[10px] backdrop-blur-sm px-2 py-0.5 rounded-md ${
-                  resonanceScore >= 70
-                    ? "bg-green-900/70 text-green-400"
-                    : resonanceScore >= 40
-                    ? "bg-yellow-900/70 text-yellow-400"
-                    : "bg-gray-800/70 text-gray-500"
-                }`}
-              >
-                {resonanceScore}%
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="px-5 pt-4 pb-5 flex flex-col flex-1">
-        {/* Badges when no image */}
-        {!offer.imageUrl && (
-          <div className="flex items-center gap-1.5 mb-2">
-            {isBridged && (
-              <span className="text-[10px] bg-indigo-900/50 text-indigo-300 px-2 py-0.5 rounded-md">Bridge</span>
-            )}
-            {vcl && (
-              <span className="text-[10px] bg-purple-900/50 text-purple-300 px-2 py-0.5 rounded-md">VCL {vcl.composite.toFixed(1)}</span>
-            )}
-            {resonanceScore !== null && (
-              <span className={`text-[10px] px-2 py-0.5 rounded-md ${
-                resonanceScore >= 70 ? "bg-green-900/50 text-green-400" : resonanceScore >= 40 ? "bg-yellow-900/50 text-yellow-400" : "bg-gray-800 text-gray-500"
-              }`}>{resonanceScore}%</span>
-            )}
           </div>
         )}
+        {/* Floating badges */}
+        <div className="absolute top-2.5 left-3 right-3">{badges}</div>
+      </div>
 
+      <div className="px-4 pt-3 pb-4 flex flex-col flex-1">
         {/* Title */}
-        <h3 className="text-[15px] font-medium text-white mb-1.5 line-clamp-2 leading-snug tracking-tight">
+        <h3 className="text-sm font-medium text-white mb-1 line-clamp-2 leading-snug tracking-tight">
           {offer.title}
         </h3>
 
-        {/* Description */}
-        <p className="text-gray-500 text-sm mb-3 line-clamp-2 leading-relaxed">
+        {/* Description — single line */}
+        <p className="text-gray-500 text-xs mb-2 line-clamp-1">
           {offer.description}
         </p>
 
         {/* Topics */}
         {offer.topics && offer.topics.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-3">
-            {offer.topics.slice(0, 4).map((topic) => (
-              <span key={topic} className="text-[10px] bg-gray-800/40 text-gray-500 px-2 py-0.5 rounded">
+          <div className="flex flex-wrap gap-1 mb-2">
+            {offer.topics.slice(0, 3).map((topic) => (
+              <span key={topic} className="text-[10px] bg-gray-800/40 text-gray-500 px-1.5 py-0.5 rounded">
                 {topic}
               </span>
             ))}
-            {offer.topics.length > 4 && (
-              <span className="text-[10px] text-gray-600">+{offer.topics.length - 4}</span>
+            {offer.topics.length > 3 && (
+              <span className="text-[10px] text-gray-600">+{offer.topics.length - 3}</span>
             )}
           </div>
         )}
 
-        {/* VCL Score Bars */}
+        {/* VCL Score — inline compact */}
         {vcl && (
-          <div className="flex flex-col gap-1.5 mb-3">
-            {([
-              ["ORI", vcl.originality],
-              ["INS", vcl.insight],
-              ["CRD", vcl.credibility],
-            ] as const).map(([label, value]) => (
-              <div key={label} className="flex items-center gap-2">
-                <span className="text-[10px] text-gray-600 w-6">{label}</span>
-                <div className="w-12 h-1 bg-gray-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-blue-500/60 to-blue-400/80 rounded-full"
-                    style={{ width: `${(value / 10) * 100}%` }}
-                  />
-                </div>
-                <span className="text-[10px] text-gray-500 font-mono">{value.toFixed(1)}</span>
-              </div>
+          <div className="flex items-center gap-3 mb-2 text-[10px] text-gray-600">
+            {([["O", vcl.originality], ["I", vcl.insight], ["C", vcl.credibility]] as const).map(([l, v]) => (
+              <span key={l} className="flex items-center gap-1">
+                <span>{l}</span>
+                <span className="w-8 h-0.5 bg-gray-800 rounded-full overflow-hidden inline-block align-middle">
+                  <span className="block h-full bg-blue-500/60 rounded-full" style={{ width: `${(v / 10) * 100}%` }} />
+                </span>
+                <span className="font-mono text-gray-500">{v.toFixed(0)}</span>
+              </span>
             ))}
           </div>
         )}
 
         <div className="flex-1" />
 
-        {/* Price + Action */}
-        <div className="flex justify-between items-center pt-3 border-t border-gray-800/50">
-          <div className="flex items-center gap-2">
-            <span className={isFree ? "text-green-400/80 font-semibold text-sm" : "text-blue-400 font-semibold text-sm"}>
+        {/* Footer: price + source + action */}
+        <div className="flex justify-between items-center pt-2 border-t border-gray-800/40">
+          <div className="flex items-center gap-1.5">
+            <span className={`text-xs font-semibold ${isFree ? "text-green-400/80" : "text-blue-400"}`}>
               {isFree ? "Free" : formatUsdc(offer.priceUsdc)}
             </span>
             {offer.sourceUrl && (
-              <a
-                href={offer.sourceUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors truncate max-w-[120px]"
-              >
+              <a href={offer.sourceUrl} target="_blank" rel="noopener noreferrer"
+                className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors truncate max-w-[100px]">
                 {offer.sourceName || (() => { try { return new URL(offer.sourceUrl!).hostname; } catch { return "source"; } })()}
               </a>
             )}
           </div>
           {isFree ? (
             offer.sourceUrl ? (
-              <a
-                href={offer.sourceUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bg-gray-800 border border-gray-700/50 hover:bg-gray-700 text-gray-300 px-3.5 py-1.5 rounded-lg text-sm transition-colors inline-flex items-center gap-1"
-              >
+              <a href={offer.sourceUrl} target="_blank" rel="noopener noreferrer"
+                className="bg-gray-800 border border-gray-700/50 hover:bg-gray-700 text-gray-300 px-3 py-1 rounded-lg text-xs transition-colors inline-flex items-center gap-1">
                 Read <span className="text-gray-500">&rarr;</span>
               </a>
             ) : (
-              <button
-                onClick={() => onView?.(offer)}
-                className="bg-gray-800 border border-gray-700/50 hover:bg-gray-700 text-gray-300 px-3.5 py-1.5 rounded-lg text-sm transition-colors"
-              >
+              <button onClick={() => onView?.(offer)}
+                className="bg-gray-800 border border-gray-700/50 hover:bg-gray-700 text-gray-300 px-3 py-1 rounded-lg text-xs transition-colors">
                 View
               </button>
             )
           ) : (
-            <button
-              onClick={() => onBuy(offer)}
-              className="bg-blue-600/90 hover:bg-blue-500 hover:shadow-md hover:shadow-blue-500/20 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200"
-            >
+            <button onClick={() => onBuy(offer)}
+              className="bg-blue-600/90 hover:bg-blue-500 hover:shadow-md hover:shadow-blue-500/20 text-white px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200">
               Buy
             </button>
           )}
         </div>
 
-        {/* Meta footer */}
-        <div className="mt-2 flex items-center justify-between text-[10px] text-gray-700">
+        {/* Meta */}
+        <div className="mt-1.5 flex items-center justify-between text-[10px] text-gray-700">
           {isBridged ? (
-            <a
-              href={`https://aegis.dwebxr.xyz?utm_source=a2a&utm_medium=bridge&utm_content=${offer.id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-indigo-400/60 hover:text-indigo-300 transition-colors"
-            >
-              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" fill="none" /></svg>
-              Curated by Aegis
+            <a href={`https://aegis.dwebxr.xyz?utm_source=a2a&utm_medium=bridge&utm_content=${offer.id}`}
+              target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-indigo-400/60 hover:text-indigo-300 transition-colors">
+              <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
+              Aegis
             </a>
           ) : (
             <span className="font-mono">{offer.agentId}</span>
