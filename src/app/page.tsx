@@ -1,10 +1,21 @@
 "use client";
 
+import { useState } from "react";
+import { usePolicy } from "@/hooks/usePolicy";
 import { A2AFeed } from "@/components/A2AFeed";
 import { AgentStatus } from "@/components/AgentStatus";
 import { PreferencePanel } from "@/components/PreferencePanel";
+import { PolicyBuilder } from "@/components/PolicyBuilder";
+import { IdentityPanel } from "@/components/IdentityPanel";
+import { ActivityTimeline } from "@/components/ActivityTimeline";
+import { WorkflowMarketplace } from "@/components/WorkflowMarketplace";
+
+type MainTab = "feed" | "activity" | "workflows";
 
 export default function Home() {
+  const [mainTab, setMainTab] = useState<MainTab>("feed");
+  const { activePolicy } = usePolicy();
+
   return (
     <main className="min-h-screen bg-black">
       <header className="bg-gradient-to-r from-gray-950 via-gray-900 to-gray-950 px-6 py-4">
@@ -36,9 +47,34 @@ export default function Home() {
           <aside className="space-y-4 lg:sticky lg:top-8 lg:self-start">
             <AgentStatus />
             <PreferencePanel />
+            <PolicyBuilder />
+            <IdentityPanel />
           </aside>
           <section>
-            <A2AFeed />
+            {/* Main tab switcher */}
+            <div className="flex gap-1 bg-gray-900/80 border border-gray-800/50 rounded-xl p-1 mb-6 w-fit">
+              {([
+                { key: "feed" as const, label: "Offers" },
+                { key: "activity" as const, label: "Activity" },
+                { key: "workflows" as const, label: "Workflows" },
+              ]).map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setMainTab(key)}
+                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    mainTab === key
+                      ? "bg-gray-700/80 text-white"
+                      : "text-gray-500 hover:text-gray-300"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {mainTab === "feed" && <A2AFeed policyRules={activePolicy?.rules} />}
+            {mainTab === "activity" && <ActivityTimeline />}
+            {mainTab === "workflows" && <WorkflowMarketplace />}
           </section>
         </div>
       </div>

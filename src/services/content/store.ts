@@ -19,6 +19,7 @@ interface OfferMeta {
   sourceUrl?: string;
   sourceName?: string;
   imageUrl?: string;
+  publisherDid?: string;
 }
 
 function toCanisterOffer(offer: Offer): CanisterOffer {
@@ -32,6 +33,7 @@ function toCanisterOffer(offer: Offer): CanisterOffer {
     sourceUrl: offer.sourceUrl,
     sourceName: offer.sourceName,
     imageUrl: offer.imageUrl,
+    publisherDid: offer.publisherDid,
   };
   return {
     id: offer.id,
@@ -72,6 +74,7 @@ function fromCanisterOffer(co: CanisterOffer): Offer {
     sourceUrl: meta.sourceUrl,
     sourceName: meta.sourceName,
     imageUrl: meta.imageUrl,
+    publisherDid: meta.publisherDid,
   };
 }
 

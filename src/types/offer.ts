@@ -31,6 +31,7 @@ export interface Offer {
   sourceUrl?: string;
   sourceName?: string;
   imageUrl?: string;
+  publisherDid?: string;
 }
 
 export interface ScoredOffer extends Offer {

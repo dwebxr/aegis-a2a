@@ -2,15 +2,21 @@
 
 import { useState, useEffect, useMemo } from "react";
 import type { Offer, ChainType, ScoredOffer } from "@/types/offer";
+import type { PolicyRule } from "@/types/policy";
 import { useOffers } from "@/hooks/useOffers";
 import { OfferCard } from "./OfferCard";
 import { MultiChainPayButton } from "./MultiChainPayButton";
 import { UnlockViewer } from "./UnlockViewer";
 import { CHAIN_NAMES, CHAIN_ICONS } from "@/lib/constants";
+import { enforcePolicy } from "@/services/policy/enforcer";
 
 type FeedTab = "free" | "premium";
 
-export function A2AFeed() {
+interface A2AFeedProps {
+  policyRules?: PolicyRule[];
+}
+
+export function A2AFeed({ policyRules }: A2AFeedProps) {
   const [tab, setTab] = useState<FeedTab>("free");
   const [chainFilter, setChainFilter] = useState<ChainType | undefined>();
   const { offers, isLoading, error, refetch } = useOffers(chainFilter);
@@ -66,10 +72,14 @@ export function A2AFeed() {
     }
   };
 
-  const filteredOffers = useMemo(
-    () => rankedOffers.filter((o) => tab === "free" ? o.priceUsdc === 0 : o.priceUsdc > 0),
-    [rankedOffers, tab]
-  );
+  const filteredOffers = useMemo(() => {
+    let result = rankedOffers.filter((o) => tab === "free" ? o.priceUsdc === 0 : o.priceUsdc > 0);
+    // Apply active policy as client-side filter
+    if (policyRules && policyRules.length > 0) {
+      result = result.filter((o) => enforcePolicy(o, policyRules).allowed);
+    }
+    return result;
+  }, [rankedOffers, tab, policyRules]);
 
   return (
     <div>

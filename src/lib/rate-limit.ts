@@ -5,9 +5,15 @@ const MAX_REQUESTS = 60;
 const CLEANUP_INTERVAL = 100; // run full cleanup every N calls
 let callCount = 0;
 
-export function isRateLimited(key: string): boolean {
+export function isRateLimited(
+  key: string,
+  maxRequests?: number,
+  windowMs?: number,
+): boolean {
+  const effectiveMax = maxRequests ?? MAX_REQUESTS;
+  const effectiveWindow = windowMs ?? WINDOW_MS;
   const now = Date.now();
-  const windowStart = now - WINDOW_MS;
+  const windowStart = now - effectiveWindow;
 
   // Lazy cleanup: prune all stale keys periodically
   if (++callCount >= CLEANUP_INTERVAL) {
@@ -29,7 +35,7 @@ export function isRateLimited(key: string): boolean {
     timestamps.shift();
   }
 
-  if (timestamps.length >= MAX_REQUESTS) {
+  if (timestamps.length >= effectiveMax) {
     return true;
   }
 

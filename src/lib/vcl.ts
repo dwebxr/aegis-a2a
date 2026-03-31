@@ -1,6 +1,9 @@
 import type { VCLScores, VCLVerdict } from "@/types/offer";
 
-const VCL_MIN_COMPOSITE = Number(process.env.AEGIS_MIN_COMPOSITE_SCORE ?? 7.0);
+const VCL_MIN_COMPOSITE = (() => {
+  const raw = Number(process.env.AEGIS_MIN_COMPOSITE_SCORE ?? 7.0);
+  return Number.isFinite(raw) ? raw : 7.0;
+})();
 const VCL_SCORE_MIN = 0;
 const VCL_SCORE_MAX = 10;
 
@@ -74,13 +77,15 @@ export function validateVCLScores(raw: unknown): VCLValidationResult {
   return { valid: true, scores };
 }
 
-export function checkVCLThreshold(scores: VCLScores): { passed: boolean; reason?: string } {
+export function checkVCLThreshold(scores: VCLScores, minComposite?: number): { passed: boolean; reason?: string } {
+  const threshold = minComposite ?? VCL_MIN_COMPOSITE;
+
   if (scores.verdict === "slop") {
     return { passed: false, reason: `Content rejected: verdict is 'slop' (composite: ${scores.composite})` };
   }
 
-  if (scores.composite < VCL_MIN_COMPOSITE) {
-    return { passed: false, reason: `Content rejected: composite score ${scores.composite} is below minimum threshold ${VCL_MIN_COMPOSITE}` };
+  if (scores.composite < threshold) {
+    return { passed: false, reason: `Content rejected: composite score ${scores.composite} is below minimum threshold ${threshold}` };
   }
 
   return { passed: true };

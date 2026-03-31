@@ -3,11 +3,16 @@ import { addOffer } from "@/services/content/store";
 import { isValidChain, VALID_CHAINS } from "@/lib/constants";
 import { isRateLimited } from "@/lib/rate-limit";
 import { validateVCLScores, checkVCLThreshold } from "@/lib/vcl";
+import { parsePolicyHeader, enforcePolicy, extractRateLimit } from "@/services/policy/enforcer";
+import { pushEvent, offerPublishedEvent } from "@/services/activity/aggregator";
 import type { ChainType } from "@/types/offer";
 
 export async function POST(req: NextRequest) {
   const ip = req.headers.get("x-forwarded-for") || "unknown";
-  if (isRateLimited(`publish:${ip}`)) {
+  const policyRules = parsePolicyHeader(req.headers.get("x-aegis-policy"));
+  const policyRateLimit = extractRateLimit(policyRules);
+
+  if (isRateLimited(`publish:${ip}`, policyRateLimit?.maxRequests, policyRateLimit?.windowMs)) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
 
@@ -17,12 +22,13 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const { agentId, title, description, priceUsdc, content, supportedChains, contentHash, vclScores, topics, sourceUrl, sourceName, imageUrl } = body as Record<string, unknown>;
-  const optionalMeta: { topics?: string[]; sourceUrl?: string; sourceName?: string; imageUrl?: string } = {};
+  const { agentId, title, description, priceUsdc, content, supportedChains, contentHash, vclScores, topics, sourceUrl, sourceName, imageUrl, publisherDid } = body as Record<string, unknown>;
+  const optionalMeta: { topics?: string[]; sourceUrl?: string; sourceName?: string; imageUrl?: string; publisherDid?: string } = {};
   if (Array.isArray(topics)) optionalMeta.topics = topics.filter((t): t is string => typeof t === "string");
   if (typeof sourceUrl === "string" && sourceUrl) optionalMeta.sourceUrl = sourceUrl;
   if (typeof sourceName === "string" && sourceName) optionalMeta.sourceName = sourceName;
   if (typeof imageUrl === "string" && imageUrl) optionalMeta.imageUrl = imageUrl;
+  if (typeof publisherDid === "string" && publisherDid) optionalMeta.publisherDid = publisherDid;
 
   const MAX_CONTENT_SIZE = 1_000_000;
   if (typeof content === "string" && content.length > MAX_CONTENT_SIZE) {
@@ -74,6 +80,26 @@ export async function POST(req: NextRequest) {
     resolvedVclScores = validation.scores;
   }
 
+  // Policy enforcement: check offer against client-provided policy rules
+  if (policyRules.length > 0) {
+    const enforcement = enforcePolicy(
+      {
+        agentId: agentId as string,
+        priceUsdc: priceUsdc as number,
+        supportedChains: chains,
+        vclScores: resolvedVclScores,
+        topics: optionalMeta.topics,
+      },
+      policyRules,
+    );
+    if (!enforcement.allowed) {
+      return NextResponse.json(
+        { error: "Policy violation", violations: enforcement.violations },
+        { status: 403 },
+      );
+    }
+  }
+
   const offer = await addOffer({
     agentId: agentId as string,
     title: title as string,
@@ -85,6 +111,9 @@ export async function POST(req: NextRequest) {
     vclScores: resolvedVclScores,
     ...optionalMeta,
   });
+
+  // Emit activity event
+  pushEvent(offerPublishedEvent(offer));
 
   return NextResponse.json({ offerId: offer.id }, { status: 201 });
 }

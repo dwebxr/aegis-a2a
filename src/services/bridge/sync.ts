@@ -10,6 +10,7 @@ import { addOffer, updateOffer, removeOffer, listOffersBySource } from "@/servic
 import { transformBriefingItems } from "./transform";
 import { fetchOgImage } from "@/lib/ogp";
 import { log } from "@/lib/logger";
+import { pushEvent, bridgeSyncEvent } from "@/services/activity/aggregator";
 
 // ── In-memory sync state (stateless across restarts → full re-sync on boot) ──
 let syncState: SyncState = {
@@ -204,6 +205,9 @@ export async function syncFromAegis(config: BridgeConfig): Promise<SyncResult> {
   };
 
   log.info("Bridge sync completed", { ...result, briefingItems: allItems.length });
+
+  // Emit activity event for the timeline
+  pushEvent(bridgeSyncEvent(result));
 
   return result;
 }
